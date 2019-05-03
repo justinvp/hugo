@@ -138,7 +138,7 @@ func (t *postcssTransformation) Transform(ctx *resources.ResourceTransformationC
 			}
 			configFile = ""
 		} else {
-			configFile = fi.(hugofs.RealFilenameInfo).RealFilename()
+			configFile = fi.(hugofs.FileMetaInfo).Meta().Filename()
 		}
 	}
 

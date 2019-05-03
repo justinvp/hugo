@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gohugoio/hugo/hugofs"
+
 	"github.com/gohugoio/hugo/media"
 
 	"github.com/gohugoio/hugo/output"
@@ -195,7 +197,6 @@ func (r *Spec) newResource(sourceFs afero.Fs, fd ResourceSourceDescriptor) (reso
 	var sourceFilename string
 
 	if fd.OpenReadSeekCloser != nil {
-
 	} else if fd.SourceFilename != "" {
 		var err error
 		fi, err = sourceFs.Stat(fd.SourceFilename)
@@ -245,8 +246,6 @@ func (r *Spec) newResource(sourceFs afero.Fs, fd ResourceSourceDescriptor) (reso
 		mimeType)
 
 	if mimeType.MainType == "image" {
-		ext := strings.ToLower(helpers.Ext(sourceFilename))
-
 		imgFormat, ok := imageFormats[ext]
 		if !ok {
 			// This allows SVG etc. to be used as resources. They will not have the methods of the Image, but
@@ -411,6 +410,10 @@ func (l *genericResource) ReadSeekCloser() (hugio.ReadSeekCloser, error) {
 	if l.openReadSeekerCloser != nil {
 		return l.openReadSeekerCloser()
 	}
+	if fim, ok := l.osFileInfo.(hugofs.FileMetaInfo); ok {
+		return fim.Meta().Open()
+	}
+	// TODO(bep) mod
 	f, err := l.sourceFs().Open(l.sourceFilename)
 	if err != nil {
 		return nil, err
@@ -710,6 +713,10 @@ func (r *Spec) newGenericResourceWithBase(
 	sourceFilename,
 	baseFilename string,
 	mediaType media.Type) *genericResource {
+
+	if osFileInfo != nil && osFileInfo.IsDir() {
+		panic(fmt.Sprintf("dirs nto supported resource types: %v", osFileInfo))
+	}
 
 	// This value is used both to construct URLs and file paths, but start
 	// with a Unix-styled path.

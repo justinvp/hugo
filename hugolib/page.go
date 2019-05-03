@@ -290,7 +290,9 @@ func (p *pageState) getLayoutDescriptor() output.LayoutDescriptor {
 
 		switch p.Kind() {
 		case page.KindSection:
-			section = sections[0]
+			if len(sections) > 0 {
+				section = sections[0]
+			}
 		case page.KindTaxonomyTerm:
 			section = p.getTaxonomyNodeInfo().singular
 		case page.KindTaxonomy:
@@ -365,6 +367,7 @@ func (p *pageState) renderResources() (err error) {
 		var toBeDeleted []int
 
 		for i, r := range p.Resources() {
+
 			if _, ok := r.(page.Page); ok {
 				// Pages gets rendered with the owning page but we count them here.
 				p.s.PathSpec.ProcessingStats.Incr(&p.s.PathSpec.ProcessingStats.Pages)
@@ -843,6 +846,7 @@ func (ps pageStatePages) findPagePosByFilnamePrefix(prefix string) int {
 
 func (s *Site) sectionsFromFile(fi source.File) []string {
 	dirname := fi.Dir()
+
 	dirname = strings.Trim(dirname, helpers.FilePathSeparator)
 	if dirname == "" {
 		return nil

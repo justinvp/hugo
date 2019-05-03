@@ -27,9 +27,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gohugoio/hugo/common/hugo"
-
 	"github.com/gohugoio/hugo/hugofs"
+
+	"github.com/gohugoio/hugo/common/hugo"
 
 	"github.com/spf13/afero"
 
@@ -460,16 +460,12 @@ func PrintFs(fs afero.Fs, path string, w io.Writer) {
 		return
 	}
 	afero.Walk(fs, path, func(path string, info os.FileInfo, err error) error {
-		if info != nil && !info.IsDir() {
-			s := path
-			if lang, ok := info.(hugofs.LanguageAnnouncer); ok {
-				s = s + "\tLANG: " + lang.Lang()
-			}
-			if fp, ok := info.(hugofs.FilePather); ok {
-				s = s + "\tRF: " + fp.Filename() + "\tBP: " + fp.BaseDir()
-			}
-			fmt.Fprintln(w, "    ", s)
+		var filename string
+		if fim, ok := info.(hugofs.FileMetaInfo); ok {
+			filename = fim.Meta().Filename()
+			path = fim.Meta().Path()
 		}
+		fmt.Fprintf(w, "    %q %q\n", path, filename)
 		return nil
 	})
 }

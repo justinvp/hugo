@@ -14,9 +14,9 @@
 package hugolib
 
 import (
-	"errors"
-	"fmt"
 	"path/filepath"
+
+	"github.com/pkg/errors"
 
 	"github.com/gohugoio/hugo/common/hugio"
 
@@ -138,6 +138,10 @@ func (c handlerContext) childCtx(fi *fileInfo) *handlerContext {
 		panic("Need a Page to create a child context")
 	}
 
+	if fi == nil {
+		panic("file is nil")
+	}
+
 	c.target = strings.TrimPrefix(fi.Path(), c.bundle.fi.Dir())
 	c.source = fi
 
@@ -192,7 +196,7 @@ func (c *contentHandlers) parsePage(h contentHandler) contentHandler {
 		content := func() (hugio.ReadSeekCloser, error) {
 			f, err := fi.Open()
 			if err != nil {
-				return nil, fmt.Errorf("failed to open content file %q: %s", fi.Filename(), err)
+				return nil, errors.Wrapf(err, "content: failed to open file %q", fi.Filename())
 			}
 			return f, nil
 		}
@@ -214,6 +218,7 @@ func (c *contentHandlers) parsePage(h contentHandler) contentHandler {
 		if ctx.bundle != nil {
 			// Add the bundled files
 			for _, fi := range ctx.bundle.resources {
+
 				childCtx := ctx.childCtx(fi)
 				res := c.rootHandler(childCtx)
 				if res.err != nil {
@@ -222,6 +227,7 @@ func (c *contentHandlers) parsePage(h contentHandler) contentHandler {
 				if res.result != nil {
 					switch resv := res.result.(type) {
 					case *pageState:
+
 						resv.m.resourcePath = filepath.ToSlash(childCtx.target)
 						resv.parent = ps
 						ps.addResources(resv)
@@ -287,9 +293,13 @@ func (c *contentHandlers) createResource() contentHandler {
 
 func (c *contentHandlers) copyFile() contentHandler {
 	return func(ctx *handlerContext) handlerResult {
-		f, err := c.s.BaseFs.Content.Fs.Open(ctx.source.Filename())
+		if ctx.source == nil {
+			panic("file is nil")
+		}
+		fi := ctx.source.FileInfo()
+		f, err := fi.Meta().Open()
 		if err != nil {
-			err := fmt.Errorf("failed to open file in copyFile: %s", err)
+			err := errors.Wrap(err, "copyFile: failed to open")
 			return handlerResult{err: err}
 		}
 

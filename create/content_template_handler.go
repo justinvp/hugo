@@ -90,7 +90,12 @@ func executeArcheTypeAsTemplate(s *hugolib.Site, name, kind, targetPath, archety
 		err               error
 	)
 
-	f := s.SourceSpec.NewFileInfo("", targetPath, false, nil)
+	// TODO(bep) mod FileMetaInfo
+	//f, err := s.SourceSpec.NewFileInfo("", targetPath, false, nil)
+	f, err := s.SourceSpec.NewFileInfo(nil, false)
+	if err != nil {
+		return nil, err
+	}
 
 	if name == "" {
 		name = f.TranslationBaseName()

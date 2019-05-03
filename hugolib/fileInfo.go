@@ -16,29 +16,25 @@ package hugolib
 import (
 	"strings"
 
+	"github.com/pkg/errors"
+
+	"github.com/gohugoio/hugo/hugofs"
+
+	"github.com/spf13/afero"
+
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/gohugoio/hugo/source"
 )
 
 // fileInfo implements the File and ReadableFile interface.
 var (
-	_ source.File         = (*fileInfo)(nil)
-	_ source.ReadableFile = (*fileInfo)(nil)
-	_ pathLangFile        = (*fileInfo)(nil)
+	_ source.File = (*fileInfo)(nil)
 )
-
-// A partial interface to prevent ambigous compiler error.
-type basePather interface {
-	Filename() string
-	RealName() string
-	BaseDir() string
-}
 
 type fileInfo struct {
 	bundleTp bundleDirType
 
-	source.ReadableFile
-	basePather
+	source.File
 
 	overriddenLang string
 
@@ -46,22 +42,24 @@ type fileInfo struct {
 	disabled bool
 }
 
+func (fi *fileInfo) Open() (afero.File, error) {
+	f, err := fi.FileInfo().Meta().Open()
+	if err != nil {
+		err = errors.Wrap(err, "fileInfo")
+	}
+
+	return f, err
+}
+
 func (fi *fileInfo) Lang() string {
 	if fi.overriddenLang != "" {
 		return fi.overriddenLang
 	}
-	return fi.ReadableFile.Lang()
-}
-
-func (fi *fileInfo) Filename() string {
-	if fi == nil || fi.basePather == nil {
-		return ""
-	}
-	return fi.basePather.Filename()
+	return fi.File.Lang()
 }
 
 func (fi *fileInfo) String() string {
-	if fi == nil || fi.ReadableFile == nil {
+	if fi == nil || fi.File == nil {
 		return ""
 	}
 	return fi.Path()
@@ -79,19 +77,23 @@ func (fi *fileInfo) isContentFile() bool {
 	return contentFileExtensionsSet[fi.Ext()]
 }
 
-func newFileInfo(sp *source.SourceSpec, baseDir, filename string, fi pathLangFileFi, tp bundleDirType) *fileInfo {
+func newFileInfo(sp *source.SourceSpec, fi hugofs.FileMetaInfo, tp bundleDirType) (*fileInfo, error) {
 
-	baseFi := sp.NewFileInfo(baseDir, filename, tp == bundleLeaf, fi)
+	baseFi, err := sp.NewFileInfo(fi, tp == bundleLeaf)
+	if err != nil {
+		return nil, err
+	}
+
 	f := &fileInfo{
-		bundleTp:     tp,
-		ReadableFile: baseFi,
-		basePather:   fi,
+		bundleTp: tp,
+		File:     baseFi,
 	}
 
 	lang := f.Lang()
+
 	f.disabled = lang != "" && sp.DisabledLanguages[lang]
 
-	return f
+	return f, nil
 
 }
 

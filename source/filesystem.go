@@ -19,17 +19,22 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/gohugoio/hugo/helpers"
+	"github.com/pkg/errors"
+
+	"github.com/gohugoio/hugo/hugofs"
+
 	jww "github.com/spf13/jwalterweatherman"
-	"golang.org/x/text/unicode/norm"
 )
 
 // Filesystem represents a source filesystem.
 type Filesystem struct {
-	files     []ReadableFile
-	filesInit sync.Once
+	files        []ReadableFile
+	filesInit    sync.Once
+	filesInitErr error
 
 	Base string
+
+	fi hugofs.FileMetaInfo
 
 	SourceSpec
 }
@@ -44,63 +49,88 @@ func (sp SourceSpec) NewFilesystem(base string) *Filesystem {
 	return &Filesystem{SourceSpec: sp, Base: base}
 }
 
+func (sp SourceSpec) NewFilesystemFromFileMetaInfo(fi hugofs.FileMetaInfo) *Filesystem {
+	return &Filesystem{SourceSpec: sp, fi: fi}
+}
+
 // Files returns a slice of readable files.
-func (f *Filesystem) Files() []ReadableFile {
+func (f *Filesystem) Files() ([]ReadableFile, error) {
 	f.filesInit.Do(func() {
-		f.captureFiles()
+		err := f.captureFiles()
+		if err != nil {
+			f.filesInitErr = errors.Wrap(err, "capture files")
+		}
 	})
-	return f.files
+	return f.files, f.filesInitErr
 }
 
 // add populates a file in the Filesystem.files
-func (f *Filesystem) add(name string, fi os.FileInfo) (err error) {
+func (f *Filesystem) add(name string, fi hugofs.FileMetaInfo) (err error) {
 	var file ReadableFile
 
 	if runtime.GOOS == "darwin" {
 		// When a file system is HFS+, its filepath is in NFD form.
-		name = norm.NFC.String(name)
+		// TODO(bep) mod move this to hugofs name = norm.NFC.String(name)
 	}
 
-	file = f.SourceSpec.NewFileInfo(f.Base, name, false, fi)
+	file, err = f.SourceSpec.NewFileInfo(fi, false)
+	if err != nil {
+		return err
+	}
+
 	f.files = append(f.files, file)
 
 	return err
 }
 
-func (f *Filesystem) captureFiles() {
-	walker := func(filePath string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		b, err := f.shouldRead(filePath, fi)
+func (f *Filesystem) captureFiles() error {
+	walker := func(fi hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if b {
-			f.add(filePath, fi)
+
+		if fi.IsDir() {
+			return nil
 		}
+
+		meta := fi.Meta()
+		filename := meta.Filename()
+
+		b, err := f.shouldRead(filename, fi)
+		if err != nil {
+			return err
+		}
+
+		if b {
+			err = f.add(filename, fi)
+		}
+
 		return err
 	}
 
-	if f.SourceFs == nil {
-		panic("Must have a fs")
-	}
-	err := helpers.SymbolicWalk(f.SourceFs, f.Base, walker)
+	var w *hugofs.Walkway
+	if f.fi != nil {
+		w = hugofs.NewWalkwayFromFi(f.fi, walker)
+	} else {
+		if f.SourceFs == nil {
+			panic("Must have a fs")
+		}
 
-	if err != nil {
-		jww.ERROR.Println(err)
+		w = hugofs.NewWalkway(f.SourceFs, f.Base, walker)
 	}
+
+	return w.Walk()
 
 }
 
-func (f *Filesystem) shouldRead(filename string, fi os.FileInfo) (bool, error) {
+func (f *Filesystem) shouldRead(filename string, fi hugofs.FileMetaInfo) (bool, error) {
 	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
 		link, err := filepath.EvalSymlinks(filename)
 		if err != nil {
 			jww.ERROR.Printf("Cannot read symbolic link '%s', error was: %s", filename, err)
 			return false, nil
 		}
+		// TODO(bep) mod this vs root mapping
 		linkfi, err := f.SourceFs.Stat(link)
 		if err != nil {
 			jww.ERROR.Printf("Cannot stat '%s', error was: %s", link, err)
@@ -113,7 +143,7 @@ func (f *Filesystem) shouldRead(filename string, fi os.FileInfo) (bool, error) {
 		return false, nil
 	}
 
-	ignore := f.SourceSpec.IgnoreFile(filename)
+	ignore := f.SourceSpec.IgnoreFile(fi.Meta().Filename())
 
 	if fi.IsDir() {
 		if ignore {
