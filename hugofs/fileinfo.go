@@ -30,15 +30,16 @@ import (
 )
 
 const (
-	metaKeyFilename  = "filename"
-	metaKeyName      = "name"
-	metaKeyPath      = "path"
-	metaKeyLang      = "lang"
-	metaKeyWeight    = "weight"
-	metaKeyFs        = "fs"
-	metaKeyOpener    = "opener"
-	metaKeyIsOrdered = "isOrdered"
-	metaKeyIsSymlink = "isSymlink"
+	metaKeyFilename   = "filename"
+	metaKeyName       = "name"
+	metaKeyPath       = "path"
+	metaKeyLang       = "lang"
+	metaKeyWeight     = "weight"
+	metaKeyFs         = "fs"
+	metaKeyOpener     = "opener"
+	metaKeyIsOrdered  = "isOrdered"
+	metaKeyIsSymlink  = "isSymlink"
+	metaKeyClassifier = "classifier"
 )
 
 type FileMeta map[string]interface{}
@@ -61,6 +62,10 @@ func (f FileMeta) Filename() string {
 
 func (f FileMeta) Name() string {
 	return f.stringV(metaKeyName)
+}
+
+func (f FileMeta) Classifier() string {
+	return f.stringV(metaKeyClassifier)
 }
 
 func (f FileMeta) Lang() string {
@@ -246,4 +251,12 @@ func decorateFileInfo(
 
 func isSymlink(fi os.FileInfo) bool {
 	return fi != nil && fi.Mode()&os.ModeSymlink == os.ModeSymlink
+}
+
+func fileInfosToFileMetaInfos(fis []os.FileInfo) []FileMetaInfo {
+	fims := make([]FileMetaInfo, len(fis))
+	for i, v := range fis {
+		fims[i] = v.(FileMetaInfo)
+	}
+	return fims
 }

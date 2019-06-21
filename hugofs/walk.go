@@ -17,41 +17,66 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/spf13/afero"
 )
 
-type WalkFunc func(info FileMetaInfo, err error) error
+type (
+	WalkFunc func(info FileMetaInfo, err error) error
+	WalkHook func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
+)
 
 type Walkway struct {
 	fs   afero.Fs
 	root string
-	fi   FileMetaInfo
+
+	// May be pre-set
+	fi         FileMetaInfo
+	dirEntries []FileMetaInfo
 
 	walkFn WalkFunc
 	walked bool
 
 	// We may traverse symbolic links and bite ourself.
 	seen map[string]bool
+
+	// Optional hooks
+	hookPre  WalkHook
+	hookPost WalkHook
 }
 
-func NewWalkway(fs afero.Fs, root string, walkFn WalkFunc) *Walkway {
-	return &Walkway{
-		fs:     fs,
-		root:   root,
-		walkFn: walkFn,
-		seen:   make(map[string]bool)}
+type WalkwayConfig struct {
+	Fs   afero.Fs
+	Root string
+
+	// One or both of these may be pre-set.
+	Info       FileMetaInfo
+	DirEntries []FileMetaInfo
+
+	WalkFn   WalkFunc
+	HookPre  func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
+	HookPost func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
 }
 
-func NewWalkwayFromFi(fi FileMetaInfo, walkFn WalkFunc) *Walkway {
+func NewWalkway(cfg WalkwayConfig) *Walkway {
+	var fs afero.Fs
+	if cfg.Info != nil {
+		fs = cfg.Info.Meta().Fs()
+	} else {
+		fs = cfg.Fs
+	}
+
 	return &Walkway{
-		fs:     fi.Meta().Fs(),
-		fi:     fi,
-		walkFn: walkFn,
-		seen:   make(map[string]bool)}
+		fs:         fs,
+		root:       cfg.Root,
+		fi:         cfg.Info,
+		dirEntries: cfg.DirEntries,
+		walkFn:     cfg.WalkFn,
+		hookPre:    cfg.HookPre,
+		hookPost:   cfg.HookPost,
+		seen:       make(map[string]bool)}
 }
 
 // TODO(bep) make content use this
@@ -80,7 +105,7 @@ func (w *Walkway) Walk() error {
 		return w.walkFn(nil, errors.New("file to walk must be a directory"))
 	}
 
-	return w.walk(w.root, fi, w.walkFn)
+	return w.walk(w.root, fi, w.dirEntries, w.walkFn)
 
 }
 
@@ -95,7 +120,7 @@ func lstatIfPossible(fs afero.Fs, path string) (os.FileInfo, error) {
 
 // walk recursively descends path, calling walkFn.
 // It follow symlinks if supported by the filesystem, but only the same path once.
-func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
+func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo, walkFn WalkFunc) error {
 	err := walkFn(info, nil)
 	if err != nil {
 		if info.IsDir() && err == filepath.SkipDir {
@@ -130,21 +155,34 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 		return walkFn(info, errors.Wrapf(err, "walk: open %q (path: %q)", filenameToOpen, path))
 	}
 
-	fis, err := f.Readdir(-1)
-	f.Close()
-	if err != nil {
-		return walkFn(info, err)
+	if dirEntries == nil {
+		fis, err := f.Readdir(-1)
+		f.Close()
+		if err != nil {
+			return walkFn(info, errors.Wrap(err, "walk: Readdir"))
+		}
+
+		dirEntries = fileInfosToFileMetaInfos(fis)
+
+		if !meta.IsOrdered() {
+			sort.Slice(fis, func(i, j int) bool {
+				fii := dirEntries[i]
+				fij := dirEntries[j]
+				return fii.Name() < fij.Name()
+			})
+		}
 	}
 
-	if !meta.IsOrdered() {
-		sort.Slice(fis, func(i, j int) bool {
-			fii := fis[i].(FileMetaInfo)
-			fij := fis[j].(FileMetaInfo)
-			return fii.Name() < fij.Name()
-		})
+	if w.hookPre != nil {
+		if err := w.hookPre(info, path, dirEntries); err != nil {
+			if err == filepath.SkipDir {
+				return nil
+			}
+			return err
+		}
 	}
 
-	for _, fi := range fis {
+	for _, fi := range dirEntries {
 		fim := fi.(FileMetaInfo)
 		var err error
 
@@ -153,7 +191,7 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 		// Note that we use the original Name even if it's a symlink.
 		pathn := filepath.Join(path, meta.Name())
 
-		meta[metaKeyPath] = w.relativePath(pathn)
+		meta[metaKeyPath] = pathn
 
 		if err != nil {
 			return walkFn(fim, err)
@@ -171,11 +209,20 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 			}
 		}
 
-		err = w.walk(pathn, fim, walkFn)
+		err = w.walk(pathn, fim, nil, walkFn)
 		if err != nil {
 			if !fi.IsDir() || err != filepath.SkipDir {
 				return err
 			}
+		}
+	}
+
+	if w.hookPost != nil {
+		if err := w.hookPost(info, path, dirEntries); err != nil {
+			if err == filepath.SkipDir {
+				return nil
+			}
+			return err
 		}
 	}
 	return nil
@@ -188,8 +235,4 @@ func (w *Walkway) isSeen(filename string) bool {
 
 	w.seen[filename] = true
 	return false
-}
-
-func (w *Walkway) relativePath(path string) string {
-	return strings.TrimPrefix(strings.TrimPrefix(path, w.root), filepathSeparator)
 }

@@ -1340,6 +1340,17 @@ func (c *contentCaptureResultHandler) handleCopyFile(m hugofs.FileMeta) {
 }
 
 func (s *Site) readAndProcessContent(filenames ...string) error {
+	// TODO(bep) mod
+	sourceSpec := source.NewSourceSpec(s.PathSpec, s.BaseFs.Content.Fs)
+
+	proc := newPagesProcessor(s.h, sourceSpec, len(filenames) > 0)
+
+	c := newPagesCollector(sourceSpec, s.Log, proc)
+
+	return c.Collect()
+}
+
+func (s *Site) readAndProcessContentOld(filenames ...string) error {
 
 	ctx := context.Background()
 	g, ctx := errgroup.WithContext(ctx)

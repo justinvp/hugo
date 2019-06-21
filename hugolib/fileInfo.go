@@ -65,6 +65,7 @@ func (fi *fileInfo) String() string {
 	return fi.Path()
 }
 
+// TODO(bep) mod remove
 func (fi *fileInfo) isOwner() bool {
 	return fi.bundleTp > bundleNot
 }
@@ -77,9 +78,32 @@ func (fi *fileInfo) isContentFile() bool {
 	return contentFileExtensionsSet[fi.Ext()]
 }
 
+// TODO(bep) rename
+func newFileInfo2(sp *source.SourceSpec, fi hugofs.FileMetaInfo) (*fileInfo, error) {
+
+	baseFi, err := sp.NewFileInfo(fi)
+	if err != nil {
+		return nil, err
+	}
+
+	f := &fileInfo{
+		// TODO(bep) mod bundleTp: tp,
+		File: baseFi,
+	}
+
+	lang := f.Lang()
+
+	// TODO(bep) mod do this ... somewhere else.
+	f.disabled = lang != "" && sp.DisabledLanguages[lang]
+
+	return f, nil
+
+}
+
+// TODO(bep) mod remove
 func newFileInfo(sp *source.SourceSpec, fi hugofs.FileMetaInfo, tp bundleDirType) (*fileInfo, error) {
 
-	baseFi, err := sp.NewFileInfo(fi, tp == bundleLeaf)
+	baseFi, err := sp.NewFileInfoOld(fi, tp == bundleLeaf)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +115,7 @@ func newFileInfo(sp *source.SourceSpec, fi hugofs.FileMetaInfo, tp bundleDirType
 
 	lang := f.Lang()
 
+	// TODO(bep) mod do this ... somewhere else.
 	f.disabled = lang != "" && sp.DisabledLanguages[lang]
 
 	return f, nil

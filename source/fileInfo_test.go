@@ -55,7 +55,7 @@ func TestFileInfo(t *testing.T) {
 
 		}},
 	} {
-		f := s.NewFileInfo(this.base, this.filename, false, nil)
+		f := s.NewFileInfoOld(this.base, this.filename, false, nil)
 		this.assert(f)
 	}
 
@@ -90,22 +90,22 @@ func TestFileInfoLanguage(t *testing.T) {
 	sv, _ := lfs.Stat("page.md")
 	en, _ := lfs.Stat("page.en.md")
 
-	fiSv := s.NewFileInfo("", "page.md", false, sv)
-	fiEn := s.NewFileInfo("", "page.en.md", false, en)
+	fiSv := s.NewFileInfoOld("", "page.md", false, sv)
+	fiEn := s.NewFileInfoOld("", "page.en.md", false, en)
 
 	assert.Equal("sv", fiSv.Lang())
 	assert.Equal("en", fiEn.Lang())
 
 	// test contentBaseName implementation
-	fi := s.NewFileInfo("", "2018-10-01-contentbasename.md", false, nil)
+	fi := s.NewFileInfoOld("", "2018-10-01-contentbasename.md", false, nil)
 	assert.Equal("2018-10-01-contentbasename", fi.ContentBaseName())
 
-	fi = s.NewFileInfo("", "2018-10-01-contentbasename.en.md", false, nil)
+	fi = s.NewFileInfoOld("", "2018-10-01-contentbasename.en.md", false, nil)
 	assert.Equal("2018-10-01-contentbasename", fi.ContentBaseName())
 
-	fi = s.NewFileInfo("", filepath.Join("2018-10-01-contentbasename", "index.en.md"), true, nil)
+	fi = s.NewFileInfoOld("", filepath.Join("2018-10-01-contentbasename", "index.en.md"), true, nil)
 	assert.Equal("2018-10-01-contentbasename", fi.ContentBaseName())
 
-	fi = s.NewFileInfo("", filepath.Join("2018-10-01-contentbasename", "_index.en.md"), false, nil)
+	fi = s.NewFileInfoOld("", filepath.Join("2018-10-01-contentbasename", "_index.en.md"), false, nil)
 	assert.Equal("_index", fi.ContentBaseName())
 }

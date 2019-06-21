@@ -854,6 +854,7 @@ func (s *Site) sectionsFromFile(fi source.File) []string {
 	parts := strings.Split(dirname, helpers.FilePathSeparator)
 
 	if fii, ok := fi.(*fileInfo); ok {
+		// TODO(bep) mod
 		if fii.bundleTp == bundleLeaf && len(parts) > 0 {
 			// my-section/mybundle/index.md => my-section
 			return parts[:len(parts)-1]

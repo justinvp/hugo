@@ -92,7 +92,7 @@ func executeArcheTypeAsTemplate(s *hugolib.Site, name, kind, targetPath, archety
 
 	// TODO(bep) mod FileMetaInfo
 	//f, err := s.SourceSpec.NewFileInfo("", targetPath, false, nil)
-	f, err := s.SourceSpec.NewFileInfo(nil, false)
+	f, err := s.SourceSpec.NewFileInfoOld(nil, false)
 	if err != nil {
 		return nil, err
 	}

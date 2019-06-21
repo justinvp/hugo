@@ -73,7 +73,7 @@ func (f *Filesystem) add(name string, fi hugofs.FileMetaInfo) (err error) {
 		// TODO(bep) mod move this to hugofs name = norm.NFC.String(name)
 	}
 
-	file, err = f.SourceSpec.NewFileInfo(fi, false)
+	file, err = f.SourceSpec.NewFileInfoOld(fi, false)
 	if err != nil {
 		return err
 	}
@@ -108,16 +108,12 @@ func (f *Filesystem) captureFiles() error {
 		return err
 	}
 
-	var w *hugofs.Walkway
-	if f.fi != nil {
-		w = hugofs.NewWalkwayFromFi(f.fi, walker)
-	} else {
-		if f.SourceFs == nil {
-			panic("Must have a fs")
-		}
-
-		w = hugofs.NewWalkway(f.SourceFs, f.Base, walker)
-	}
+	w := hugofs.NewWalkway(hugofs.WalkwayConfig{
+		Fs:     f.SourceFs,
+		Info:   f.fi,
+		Root:   f.Base,
+		WalkFn: walker,
+	})
 
 	return w.Walk()
 
