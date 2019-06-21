@@ -75,7 +75,3 @@ func (fs *noSymlinkFs) OpenFile(name string, flag int, perm os.FileMode) (afero.
 	}
 	return fs.Fs.OpenFile(name, flag, perm)
 }
-
-func isSymlink(fi os.FileInfo) bool {
-	return fi != nil && fi.Mode()&os.ModeSymlink == os.ModeSymlink
-}

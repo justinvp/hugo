@@ -26,7 +26,7 @@ import (
 
 func TestRootMappingFsDirnames(t *testing.T) {
 	assert := require.New(t)
-	fs := NewFilenameDecorator(afero.NewMemMapFs())
+	fs := NewBaseFileDecorator(afero.NewMemMapFs())
 
 	testfile := "myfile.txt"
 	assert.NoError(fs.Mkdir("f1t", 0755))
@@ -57,7 +57,7 @@ func TestRootMappingFsFilename(t *testing.T) {
 	workDir, clean, err := htesting.CreateTempDir(Os, "hugo-root-filename")
 	assert.NoError(err)
 	defer clean()
-	fs := NewFilenameDecorator(Os)
+	fs := NewBaseFileDecorator(Os)
 
 	testfilename := filepath.Join(workDir, "f1t/foo/file.txt")
 
@@ -80,7 +80,7 @@ func TestRootMappingFsFilename(t *testing.T) {
 
 func TestRootMappingFsMount(t *testing.T) {
 	assert := require.New(t)
-	fs := NewFilenameDecorator(afero.NewMemMapFs())
+	fs := NewBaseFileDecorator(afero.NewMemMapFs())
 
 	testfile := "test.txt"
 

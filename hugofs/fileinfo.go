@@ -31,12 +31,14 @@ import (
 
 const (
 	metaKeyFilename  = "filename"
+	metaKeyName      = "name"
 	metaKeyPath      = "path"
 	metaKeyLang      = "lang"
 	metaKeyWeight    = "weight"
 	metaKeyFs        = "fs"
 	metaKeyOpener    = "opener"
 	metaKeyIsOrdered = "isOrdered"
+	metaKeyIsSymlink = "isSymlink"
 )
 
 type FileMeta map[string]interface{}
@@ -49,8 +51,16 @@ func (f FileMeta) GetString(key string) string {
 	return cast.ToString(f[key])
 }
 
+func (f FileMeta) GetBool(key string) bool {
+	return cast.ToBool(f[key])
+}
+
 func (f FileMeta) Filename() string {
 	return f.stringV(metaKeyFilename)
+}
+
+func (f FileMeta) Name() string {
+	return f.stringV(metaKeyName)
 }
 
 func (f FileMeta) Lang() string {
@@ -66,10 +76,12 @@ func (f FileMeta) Weight() int {
 }
 
 func (f FileMeta) IsOrdered() bool {
-	if v, found := f[metaKeyIsOrdered]; found {
-		return v.(bool)
-	}
-	return false
+	return f.GetBool(metaKeyIsOrdered)
+}
+
+// IsSymlink returns whether this comes from a symlinked file or directory.
+func (f FileMeta) IsSymlink() bool {
+	return f.GetBool(metaKeyIsSymlink)
 }
 
 func (f FileMeta) Watch() bool {
@@ -230,4 +242,8 @@ func decorateFileInfo(
 
 	return fi
 
+}
+
+func isSymlink(fi os.FileInfo) bool {
+	return fi != nil && fi.Mode()&os.ModeSymlink == os.ModeSymlink
 }

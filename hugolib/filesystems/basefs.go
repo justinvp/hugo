@@ -331,7 +331,7 @@ type sourceFilesystemsBuilder struct {
 }
 
 func newSourceFilesystemsBuilder(p *paths.Paths, b *BaseFs) *sourceFilesystemsBuilder {
-	sourceFs := hugofs.NewFilenameDecorator(p.Fs.Source)
+	sourceFs := hugofs.NewBaseFileDecorator(p.Fs.Source)
 	return &sourceFilesystemsBuilder{p: p, sourceFs: sourceFs, theBigFs: b.theBigFs, result: &SourceFilesystems{}}
 }
 

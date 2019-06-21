@@ -22,7 +22,7 @@ import (
 )
 
 func decorateDirs(fs afero.Fs, meta FileMeta) afero.Fs {
-	ffs := &fileDecoratorFs{Fs: fs}
+	ffs := &baseFileDecoratorFs{Fs: fs}
 
 	decorator := func(fi os.FileInfo, name string) (os.FileInfo, error) {
 		if !fi.IsDir() {
@@ -41,7 +41,7 @@ func decorateDirs(fs afero.Fs, meta FileMeta) afero.Fs {
 
 func decoratePath(fs afero.Fs, createPath func(name string) string) afero.Fs {
 
-	ffs := &fileDecoratorFs{Fs: fs}
+	ffs := &baseFileDecoratorFs{Fs: fs}
 
 	decorator := func(fi os.FileInfo, name string) (os.FileInfo, error) {
 		path := createPath(name)
@@ -63,7 +63,7 @@ func DecorateBasePathFs(base *afero.BasePathFs) afero.Fs {
 		basePath += filepathSeparator
 	}
 
-	ffs := &fileDecoratorFs{Fs: base}
+	ffs := &baseFileDecoratorFs{Fs: base}
 
 	decorator := func(fi os.FileInfo, name string) (os.FileInfo, error) {
 		path := strings.TrimPrefix(name, basePath)
@@ -76,18 +76,38 @@ func DecorateBasePathFs(base *afero.BasePathFs) afero.Fs {
 	return ffs
 }
 
-// NewFilenameDecorator decorates the given Fs to provide the real filename
-// and an Opener func.
-func NewFilenameDecorator(fs afero.Fs) afero.Fs {
+// NewBaseFileDecorator decorates the given Fs to provide the real filename
+// and an Opener func. If
+func NewBaseFileDecorator(fs afero.Fs) afero.Fs {
 
-	ffs := &fileDecoratorFs{Fs: fs}
+	ffs := &baseFileDecoratorFs{Fs: fs}
 
 	decorator := func(fi os.FileInfo, filename string) (os.FileInfo, error) {
-		opener := func() (afero.File, error) {
-			return fs.Open(filename)
+
+		// Store away the original in case it's a symlink.
+		// TODO(bep) mod consider this...
+		meta := FileMeta{metaKeyName: fi.Name()}
+		isSymlink := isSymlink(fi)
+
+		if isSymlink {
+			link, err := filepath.EvalSymlinks(filename)
+			if err != nil {
+				return nil, err
+			}
+			fi, err = fs.Stat(link)
+			if err != nil {
+				return nil, err
+			}
+			filename = link
+			meta[metaKeyIsSymlink] = true
+
 		}
 
-		return decorateFileInfo("fnd", fi, fs, opener, filename, "", nil), nil
+		opener := func() (afero.File, error) {
+			return ffs.open(filename, isSymlink)
+		}
+
+		return decorateFileInfo("fnd", fi, fs, opener, filename, "", meta), nil
 	}
 
 	ffs.decorate = decorator
@@ -110,15 +130,15 @@ func NewCompositeDirDecorator(fs afero.Fs) afero.Fs {
 		return decorateFileInfo("compd", fi, fs, opener, "", "", nil), nil
 	}
 
-	return &fileDecoratorFs{Fs: fs, decorate: decorator}
+	return &baseFileDecoratorFs{Fs: fs, decorate: decorator}
 }
 
-type fileDecoratorFs struct {
+type baseFileDecoratorFs struct {
 	afero.Fs
 	decorate func(fi os.FileInfo, filename string) (os.FileInfo, error)
 }
 
-func (fs *fileDecoratorFs) Stat(name string) (os.FileInfo, error) {
+func (fs *baseFileDecoratorFs) Stat(name string) (os.FileInfo, error) {
 	fi, err := fs.Fs.Stat(name)
 	if err != nil {
 		return nil, err
@@ -128,7 +148,7 @@ func (fs *fileDecoratorFs) Stat(name string) (os.FileInfo, error) {
 
 }
 
-func (b *fileDecoratorFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
+func (b *baseFileDecoratorFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 	var (
 		fi  os.FileInfo
 		err error
@@ -150,29 +170,43 @@ func (b *fileDecoratorFs) LstatIfPossible(name string) (os.FileInfo, bool, error
 	return fi, ok, err
 }
 
-func (fs *fileDecoratorFs) Open(name string) (afero.File, error) {
-	f, err := fs.Fs.Open(name)
+func (fs *baseFileDecoratorFs) Open(name string) (afero.File, error) {
+	return fs.open(name, false)
+}
+
+func (fs *baseFileDecoratorFs) open(name string, isSymlink bool) (afero.File, error) {
+	openFs := fs.Fs
+	if isSymlink {
+		// Make sure symlinks are opened up in the Os filesystem.
+		openFs = Os
+	}
+	f, err := openFs.Open(name)
 	if err != nil {
 		return nil, err
 	}
-	return &fileDecoratorFile{File: f, fs: fs}, nil
+	return &baseFileDecoratorFile{File: f, fs: fs}, nil
 }
 
-type fileDecoratorFile struct {
+type baseFileDecoratorFile struct {
 	afero.File
-	fs *fileDecoratorFs
+	fs *baseFileDecoratorFs
 }
 
-func (l *fileDecoratorFile) Readdir(c int) (ofi []os.FileInfo, err error) {
-	fis, err := l.File.Readdir(c)
+func (l *baseFileDecoratorFile) Readdir(c int) (ofi []os.FileInfo, err error) {
+	dirnames, err := l.File.Readdirnames(c)
 	if err != nil {
 		return nil, err
 	}
 
-	fisp := make([]os.FileInfo, len(fis))
+	fisp := make([]os.FileInfo, len(dirnames))
 
-	for i, fi := range fis {
-		filename := filepath.Join(l.Name(), fi.Name())
+	for i, dirname := range dirnames {
+		filename := filepath.Join(l.Name(), dirname)
+		// We need to resolve any symlink info.
+		fi, err := lstatIfPossible(l.fs.Fs, filename)
+		if err != nil {
+			return nil, err
+		}
 		fi, err = l.fs.decorate(fi, filename)
 		if err != nil {
 			return nil, err

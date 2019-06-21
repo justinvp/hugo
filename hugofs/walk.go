@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -70,7 +71,7 @@ func (w *Walkway) Walk() error {
 	} else {
 		info, err := lstatIfPossible(w.fs, w.root)
 		if err != nil {
-			return w.walkFn(nil, errors.Wrap(err, "walk"))
+			return w.walkFn(nil, errors.Wrapf(err, "walk: %q", w.root))
 		}
 		fi = info.(FileMetaInfo)
 	}
@@ -106,26 +107,24 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 		return nil
 	}
 
-	var isSym bool
-	info, isSym, err = w.resolveSymlink(info)
-	if err != nil {
-		return walkFn(info, err)
-	}
-
 	meta := info.Meta()
 	filename := meta.Filename()
 	filenameToOpen := path // may be a composite
-	if isSym {
+	openFs := w.fs
+
+	if meta.IsSymlink() {
 		// Symlinks will only work in the filesystems defined by the project,
 		// (not theme components), and we do follow them.
 		filenameToOpen = filename
+		// This is a full filename to a file on the Os filesystem.
+		openFs = osDecorated
 
 	}
 
 	// Prevent infinite recursion.
 	w.isSeen(filename)
 
-	f, err := w.fs.Open(filenameToOpen)
+	f, err := openFs.Open(filenameToOpen)
 
 	if err != nil {
 		return walkFn(info, errors.Wrapf(err, "walk: open %q (path: %q)", filenameToOpen, path))
@@ -148,17 +147,23 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 	for _, fi := range fis {
 		fim := fi.(FileMetaInfo)
 		var err error
-		var isSym bool
-		fim, isSym, err = w.resolveSymlink(fim)
+
+		meta := fim.Meta()
+
+		// Note that we use the original Name even if it's a symlink.
+		pathn := filepath.Join(path, meta.Name())
+
+		meta[metaKeyPath] = w.relativePath(pathn)
 
 		if err != nil {
 			return walkFn(fim, err)
 		}
 
 		if fim.IsDir() {
+
 			// Prevent infinite recursion
-			filename := fim.Meta().Filename()
-			if w.isSeen(filename) && isSym {
+			filename := meta.Filename()
+			if w.isSeen(filename) && meta.IsSymlink() {
 				// Possible cyclic reference
 				// TODO(bep) mod check if we log some warning about this in the
 				// existing content walker.
@@ -166,8 +171,7 @@ func (w *Walkway) walk(path string, info FileMetaInfo, walkFn WalkFunc) error {
 			}
 		}
 
-		// Note that we use the original Name even if it's a symlink.
-		err = w.walk(filepath.Join(path, fi.Name()), fim, walkFn)
+		err = w.walk(pathn, fim, walkFn)
 		if err != nil {
 			if !fi.IsDir() || err != filepath.SkipDir {
 				return err
@@ -186,29 +190,6 @@ func (w *Walkway) isSeen(filename string) bool {
 	return false
 }
 
-func (w *Walkway) resolveSymlink(fi FileMetaInfo) (FileMetaInfo, bool, error) {
-	if !isSymlink(fi) {
-		// Nothing to do
-		return fi, false, nil
-	}
-
-	meta := fi.Meta()
-
-	// If it's a symlink it is the OS filesystem.
-	link, err := filepath.EvalSymlinks(meta.Filename())
-	if err != nil {
-		return fi, false, err
-	}
-
-	lfi, err := os.Stat(link)
-	if err != nil {
-		return nil, false, err
-	}
-
-	// TODO(bep) mod consider this, maybe add a symlink flag or something.
-	// TODO(bep) mod probably better to preserve the source filename and not link (for errors)
-	meta[metaKeyFilename] = link
-
-	return NewFileMetaInfo(lfi, meta), true, nil
-
+func (w *Walkway) relativePath(path string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(path, w.root), filepathSeparator)
 }
