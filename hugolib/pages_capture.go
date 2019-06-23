@@ -128,7 +128,7 @@ func (c *pagesCollector) Collect() error {
 		return nil
 	}
 
-	wfn := func(info hugofs.FileMetaInfo, err error) error {
+	wfn := func(path string, info hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -269,7 +269,7 @@ func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, 
 	// Maps bundles to its language.
 	bundles := make(map[string]*fileinfoBundle)
 
-	walk := func(info hugofs.FileMetaInfo, err error) error {
+	walk := func(path string, info hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}

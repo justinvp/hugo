@@ -50,6 +50,7 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 	}
 
 	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) []os.FileInfo {
+		// TODO(bep) add a translations slice to meta
 		fisn := make([]os.FileInfo, len(fis))
 		for i, fi := range fis {
 			if fi.IsDir() {
@@ -71,9 +72,9 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 			}
 
 			fim := NewFileMetaInfo(fi, FileMeta{
-				metaKeyLang:           lang,
-				metaKeyWeight:         weight,
-				"translationBaseName": translationBaseName,
+				metaKeyLang:                lang,
+				metaKeyWeight:              weight,
+				metaKeyTranslationBaseName: translationBaseName,
 			})
 
 			fisn[i] = fim

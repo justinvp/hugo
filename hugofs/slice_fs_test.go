@@ -14,6 +14,7 @@
 package hugofs
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -26,13 +27,6 @@ import (
 
 // TODO(bep) mod
 // tc-lib-color/class-Com.Tecnick.Color.Css and class-Com.Tecnick.Color.sv.Css
-
-/*
-
-theme/a/mysvblogcontent => /blog [sv]
-theme/b/myenblogcontent=> /blog [en]
-
-*/
 
 func TestLanguageRootMapping(t *testing.T) {
 	assert := require.New(t)
@@ -80,5 +74,60 @@ func TestLanguageRootMapping(t *testing.T) {
 	dirs, err := rfs.Dirs("content/blog")
 	assert.NoError(err)
 	assert.Equal(2, len(dirs))
+
+}
+
+func TestLanguageMeta(t *testing.T) {
+	assert := require.New(t)
+	v := viper.New()
+	v.Set("contentDir", "content")
+
+	/*	languages := langs.Languages{
+		langs.NewLanguage("en", v),
+		langs.NewLanguage("sv", v),
+		langs.NewLanguage("nn", v),
+	}*/
+
+	fs := NewBaseFileDecorator(afero.NewMemMapFs())
+
+	type testConfig struct {
+		lang string
+		to   string // real path
+
+	}
+
+	testConfigs := []testConfig{
+		testConfig{"en", "themes/myenblog"},
+		testConfig{"sv", "themes/mysvblog"},
+		testConfig{"nn", "themes/mynnblog"},
+	}
+
+	writeFile := func(cfg testConfig, filename string) {
+		assert.NoError(afero.WriteFile(fs, filepath.Join(cfg.to, filename), []byte(fmt.Sprintf("%s in %s", filename, cfg.lang)), 0755))
+	}
+
+	// Fully translated
+	for _, cfg := range testConfigs {
+		writeFile(cfg, "fullytranslated/index.md")
+		writeFile(cfg, "fullytranslated/data.json")
+	}
+
+	var rootMappings []RootMapping
+
+	for _, cfg := range testConfigs {
+		rootMappings = append(rootMappings, RootMapping{
+			From: "content/blog",
+			To:   cfg.to,
+			Meta: FileMeta{"lang": cfg.lang},
+		})
+	}
+
+	rfs, err := NewRootMappingFs(fs, rootMappings...)
+
+	assert.NoError(err)
+
+	dirs, err := rfs.Dirs("content/blog")
+	assert.NoError(err)
+	assert.Equal(3, len(dirs))
 
 }

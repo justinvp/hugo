@@ -30,16 +30,17 @@ import (
 )
 
 const (
-	metaKeyFilename   = "filename"
-	metaKeyName       = "name"
-	metaKeyPath       = "path"
-	metaKeyLang       = "lang"
-	metaKeyWeight     = "weight"
-	metaKeyFs         = "fs"
-	metaKeyOpener     = "opener"
-	metaKeyIsOrdered  = "isOrdered"
-	metaKeyIsSymlink  = "isSymlink"
-	metaKeyClassifier = "classifier"
+	metaKeyFilename            = "filename"
+	metaKeyName                = "name"
+	metaKeyPath                = "path"
+	metaKeyLang                = "lang"
+	metaKeyWeight              = "weight"
+	metaKeyFs                  = "fs"
+	metaKeyOpener              = "opener"
+	metaKeyIsOrdered           = "isOrdered"
+	metaKeyIsSymlink           = "isSymlink"
+	metaKeyClassifier          = "classifier"
+	metaKeyTranslationBaseName = "translationBaseName"
 )
 
 type FileMeta map[string]interface{}
@@ -58,6 +59,10 @@ func (f FileMeta) GetBool(key string) bool {
 
 func (f FileMeta) Filename() string {
 	return f.stringV(metaKeyFilename)
+}
+
+func (f FileMeta) TranslationBaseName() string {
+	return f.stringV(metaKeyTranslationBaseName)
 }
 
 func (f FileMeta) Name() string {

@@ -84,7 +84,7 @@ func (f *Filesystem) add(name string, fi hugofs.FileMetaInfo) (err error) {
 }
 
 func (f *Filesystem) captureFiles() error {
-	walker := func(fi hugofs.FileMetaInfo, err error) error {
+	walker := func(path string, fi hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}

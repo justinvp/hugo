@@ -34,11 +34,11 @@ func TestWalk(t *testing.T) {
 
 	fs := NewBaseFileDecorator(afero.NewMemMapFs())
 
-	afero.WriteFile(fs, filepath.FromSlash("/b.txt"), []byte("content"), 0777)
-	afero.WriteFile(fs, filepath.FromSlash("/c.txt"), []byte("content"), 0777)
-	afero.WriteFile(fs, filepath.FromSlash("/a.txt"), []byte("content"), 0777)
+	afero.WriteFile(fs, "b.txt", []byte("content"), 0777)
+	afero.WriteFile(fs, "c.txt", []byte("content"), 0777)
+	afero.WriteFile(fs, "a.txt", []byte("content"), 0777)
 
-	names, err := collectFilenames(fs, "")
+	names, err := collectFilenames(fs, "", "")
 
 	assert.NoError(err)
 	assert.Equal([]string{"a.txt", "b.txt", "c.txt"}, names)
@@ -75,7 +75,7 @@ func _TestWalkRootMappingFs(t *testing.T) {
 	assert.NoError(err)
 	bfs := afero.NewBasePathFs(rfs, "static")
 
-	names, err := collectFilenames(bfs, "")
+	names, err := collectFilenames(bfs, "", "")
 
 	assert.NoError(err)
 	assert.Equal([]string{"e/f/test.txt", "c/d/test.txt", "a/b/test.txt"}, names)
@@ -112,7 +112,7 @@ func TestWalkSymbolicLink(t *testing.T) {
 	t.Run("OS Fs", func(t *testing.T) {
 		assert := require.New(t)
 
-		names, err := collectFilenames(fs, workDir)
+		names, err := collectFilenames(fs, workDir, workDir)
 		assert.NoError(err)
 
 		assert.Equal([]string{"blog/symlinked/a.txt", "blog/real/a.txt", "docs/b.txt"}, names)
@@ -123,7 +123,7 @@ func TestWalkSymbolicLink(t *testing.T) {
 
 		docsFs := afero.NewBasePathFs(fs, docsDir)
 
-		names, err := collectFilenames(docsFs, "")
+		names, err := collectFilenames(docsFs, "", "")
 		assert.NoError(err)
 
 		// Note: the docsreal folder is considered cyclic when walking from the root, but this works.
@@ -132,10 +132,10 @@ func TestWalkSymbolicLink(t *testing.T) {
 
 }
 
-func collectFilenames(fs afero.Fs, root string) ([]string, error) {
+func collectFilenames(fs afero.Fs, base, root string) ([]string, error) {
 	var names []string
 
-	walkFn := func(info FileMetaInfo, err error) error {
+	walkFn := func(path string, info FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func collectFilenames(fs afero.Fs, root string) ([]string, error) {
 		return nil
 	}
 
-	w := NewWalkway(fs, root, walkFn)
+	w := NewWalkway(WalkwayConfig{Fs: fs, BasePath: base, Root: root, WalkFn: walkFn})
 
 	err := w.Walk()
 
@@ -180,7 +180,7 @@ func BenchmarkWalk(b *testing.B) {
 	writeFiles("root/l1_2/l2_1", numFilesPerDir)
 	writeFiles("root/l1_3", numFilesPerDir)
 
-	walkFn := func(info FileMetaInfo, err error) error {
+	walkFn := func(path string, info FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func BenchmarkWalk(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		w := NewWalkway(fs, "root", walkFn)
+		w := NewWalkway(WalkwayConfig{Fs: fs, Root: "root", WalkFn: walkFn})
 
 		if err := w.Walk(); err != nil {
 			b.Fatal(err)
