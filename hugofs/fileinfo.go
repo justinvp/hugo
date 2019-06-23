@@ -65,7 +65,12 @@ func (f FileMeta) Name() string {
 }
 
 func (f FileMeta) Classifier() string {
-	return f.stringV(metaKeyClassifier)
+	c := f.stringV(metaKeyClassifier)
+	if c != "" {
+		return c
+	}
+
+	return "zzfile" // For sorting
 }
 
 func (f FileMeta) Lang() string {

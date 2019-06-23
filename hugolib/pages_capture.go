@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/gohugoio/hugo/resources"
 
@@ -39,8 +40,8 @@ import (
 const contentClassifierMetaKey = "classifier"
 
 const (
-	contentClassifierLeaf    = "branch"
-	contentClassifierBranch  = "leaf"
+	contentClassifierLeaf    = "leaf"
+	contentClassifierBranch  = "branch"
 	contentClassifierFile    = "zfile" // Sort below
 	contentClassifierContent = "zcontent"
 )
@@ -120,7 +121,7 @@ func (c *pagesCollector) Collect() error {
 			return filepath.SkipDir
 		}
 
-		if err := c.handleFiles(readdir); err != nil {
+		if err := c.handleFiles(readdir...); err != nil {
 			return nil
 		}
 
@@ -188,6 +189,10 @@ func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles map[strin
 			}
 		}
 
+		if source == nil {
+			panic(fmt.Sprintf("no source found, %d", len(bundles)))
+		}
+
 		clone := c.cloneFileInfo(source.header)
 		clone.Meta()["lang"] = lang
 
@@ -228,17 +233,29 @@ func (c *pagesCollector) cloneFileInfo(fi hugofs.FileMetaInfo) hugofs.FileMetaIn
 }
 
 func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error {
+
 	c.sortBundleDir(readdir)
 
 	// Maps bundles to its language.
 	bundles := make(map[string]*fileinfoBundle)
 
 	for _, fim := range readdir {
+
 		if fim.IsDir() {
 			continue
 		}
 
-		c.addToBundle(fim, bundles)
+		meta := fim.Meta()
+
+		switch meta.Classifier() {
+		case contentClassifierContent:
+			if err := c.handleFiles(fim); err != nil {
+				return err
+			}
+		default:
+			c.addToBundle(fim, bundles)
+		}
+
 	}
 
 	return c.proc.Process(bundles)
@@ -256,7 +273,6 @@ func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, 
 		if err != nil {
 			return err
 		}
-
 		if info.IsDir() {
 			return nil
 		}
@@ -282,7 +298,7 @@ func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, 
 
 }
 
-func (c *pagesCollector) handleFiles(fis []hugofs.FileMetaInfo) error {
+func (c *pagesCollector) handleFiles(fis ...hugofs.FileMetaInfo) error {
 	for _, fi := range fis {
 		if fi.IsDir() {
 			continue
@@ -471,7 +487,7 @@ func (proc *pagesProcessor) newResource(fim hugofs.FileMetaInfo, owner *pageStat
 		resources.ResourceSourceDescriptor{
 			TargetPaths:        owner.getTargetPaths,
 			OpenReadSeekCloser: r,
-			RelTargetFilename:  meta.Path(),
+			RelTargetFilename:  strings.TrimPrefix(meta.Path(), owner.Dir()),
 			TargetBasePaths:    targetBasePaths,
 		})
 
