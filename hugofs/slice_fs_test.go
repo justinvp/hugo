@@ -15,9 +15,11 @@ package hugofs
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/gohugoio/hugo/langs"
 	"github.com/spf13/viper"
 
 	"github.com/spf13/afero"
@@ -32,11 +34,6 @@ func TestLanguageRootMapping(t *testing.T) {
 	assert := require.New(t)
 	v := viper.New()
 	v.Set("contentDir", "content")
-
-	/*langSet := langs.Languages{
-		langs.NewLanguage("en", v),
-		langs.NewLanguage("sv", v),
-	}.AsSet()*/
 
 	fs := afero.NewMemMapFs()
 
@@ -82,11 +79,11 @@ func TestLanguageMeta(t *testing.T) {
 	v := viper.New()
 	v.Set("contentDir", "content")
 
-	/*	languages := langs.Languages{
+	languages := langs.Languages{
 		langs.NewLanguage("en", v),
 		langs.NewLanguage("sv", v),
 		langs.NewLanguage("nn", v),
-	}*/
+	}
 
 	fs := NewBaseFileDecorator(afero.NewMemMapFs())
 
@@ -129,5 +126,31 @@ func TestLanguageMeta(t *testing.T) {
 	dirs, err := rfs.Dirs("content/blog")
 	assert.NoError(err)
 	assert.Equal(3, len(dirs))
+
+	langFs, err := NewLanguageFs(languages.AsSet(), dirs...)
+	assert.NoError(err)
+	assert.NotNil(langFs)
+
+	fullytranslated, err := langFs.Open("fullytranslated")
+	assert.NoError(err)
+
+	fis, err := fullytranslated.Readdir(-1)
+	assert.NoError(err)
+	assert.Equal(6, len(fis))
+
+	pickOne := func(fis []os.FileInfo, matches func(fim FileMetaInfo) bool) FileMetaInfo {
+		for _, fi := range fis {
+			fim := fi.(FileMetaInfo)
+			if matches(fim) {
+				return fim
+			}
+		}
+		assert.Fail("fi not found")
+		return nil
+	}
+
+	fi := pickOne(fis, func(fim FileMetaInfo) bool { return fim.Name() == "index.md" && fim.Meta().Lang() == "sv" })
+
+	fmt.Println(fi.Meta())
 
 }
