@@ -19,6 +19,8 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/pkg/errors"
 
 	"github.com/gohugoio/hugo/config"
@@ -78,7 +80,7 @@ func newCapturer(
 	isBundleHeader := func(filename string) bool {
 		base := filepath.Base(filename)
 		name := helpers.Filename(base)
-		return IsContentFile(base) && (name == "index" || name == "_index")
+		return files.IsContentFile(base) && (name == "index" || name == "_index")
 	}
 
 	// Make sure that any bundle header files are processed before the others. This makes

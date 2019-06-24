@@ -97,9 +97,10 @@ func TestWalkSymbolicLink(t *testing.T) {
 	blogDir := filepath.Join(workDir, "blog")
 	docsDir := filepath.Join(workDir, "docs")
 	blogReal := filepath.Join(blogDir, "real")
-	assert.NoError(os.MkdirAll(blogReal, 0777))
+	blogRealSub := filepath.Join(blogReal, "sub1")
+	assert.NoError(os.MkdirAll(blogRealSub, 0777))
 	assert.NoError(os.MkdirAll(docsDir, 0777))
-	afero.WriteFile(fs, filepath.Join(blogReal, "a.txt"), []byte("content"), 0777)
+	afero.WriteFile(fs, filepath.Join(blogRealSub, "a.txt"), []byte("content"), 0777)
 	afero.WriteFile(fs, filepath.Join(docsDir, "b.txt"), []byte("content"), 0777)
 
 	os.Chdir(blogDir)
@@ -115,7 +116,7 @@ func TestWalkSymbolicLink(t *testing.T) {
 		names, err := collectFilenames(fs, workDir, workDir)
 		assert.NoError(err)
 
-		assert.Equal([]string{"blog/symlinked/a.txt", "blog/real/a.txt", "docs/b.txt"}, names)
+		assert.Equal([]string{"blog/symlinked/sub/a.txt", "blog/real/sub/a.txt", "docs/b.txt"}, names)
 	})
 
 	t.Run("BasePath Fs", func(t *testing.T) {
@@ -127,7 +128,7 @@ func TestWalkSymbolicLink(t *testing.T) {
 		assert.NoError(err)
 
 		// Note: the docsreal folder is considered cyclic when walking from the root, but this works.
-		assert.Equal([]string{"b.txt", "docsreal/a.txt"}, names)
+		assert.Equal([]string{"b.txt", "docsreal/sub/a.txt"}, names)
 	})
 
 }

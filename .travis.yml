@@ -23,6 +23,9 @@ matrix:
   - os: windows
     go: tip
 
+notifications:
+  email: false
+  
 install:
   - mkdir -p $HOME/src
   - mv $TRAVIS_BUILD_DIR $HOME/src

@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/bep/gitmap"
 
 	"github.com/gohugoio/hugo/helpers"
@@ -854,8 +856,7 @@ func (s *Site) sectionsFromFile(fi source.File) []string {
 	parts := strings.Split(dirname, helpers.FilePathSeparator)
 
 	if fii, ok := fi.(*fileInfo); ok {
-		// TODO(bep) mod
-		if fii.bundleTp == bundleLeaf && len(parts) > 0 {
+		if len(parts) > 0 && fii.FileInfo().Meta().Classifier() == files.ContentClassLeaf {
 			// my-section/mybundle/index.md => my-section
 			return parts[:len(parts)-1]
 		}

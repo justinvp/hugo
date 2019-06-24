@@ -17,8 +17,9 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
+
+	"github.com/gohugoio/hugo/hugofs/files"
 
 	"github.com/gohugoio/hugo/resources"
 
@@ -38,13 +39,6 @@ import (
 )
 
 const contentClassifierMetaKey = "classifier"
-
-const (
-	contentClassifierLeaf    = "leaf"
-	contentClassifierBranch  = "branch"
-	contentClassifierFile    = "zfile" // Sort below
-	contentClassifierContent = "zcontent"
-)
 
 func newPagesCollector(sp *source.SourceSpec, logger *loggers.Logger, proc pagesCollectorProcessorProvider) *pagesCollector {
 	//numWorkers := config.GetNumWorkerMultiplier() * 3
@@ -81,30 +75,40 @@ func (c *pagesCollector) Collect() error {
 			isLeafBundle   bool
 		)
 
-		setClassifier := func(fi hugofs.FileMetaInfo, classifier string) {
-			fi.Meta()[contentClassifierMetaKey] = classifier
-		}
+		// We merge language directories, so there can be duplicates, but they
+		// will be ordered, most important first.
+		var duplicates []int
+		seen := make(map[string]bool)
 
-		for _, fi := range readdir {
+		for i, fi := range readdir {
 			if fi.IsDir() {
 				continue
 			}
-			tp, isContent := classifyBundledFile(fi.Name())
 
-			switch tp {
-			case bundleLeaf:
-				setClassifier(fi, contentClassifierLeaf)
+			meta := fi.Meta()
+			class := meta.Classifier()
+			translationBase := meta.TranslationBaseNameWithExt()
+			if seen[translationBase] {
+				duplicates = append(duplicates, i)
+				continue
+			}
+			seen[translationBase] = true
+
+			switch class {
+			case files.ContentClassLeaf:
 				isLeafBundle = true
-			case bundleBranch:
-				setClassifier(fi, contentClassifierBranch)
+			case files.ContentClassBranch:
 				isBranchBundle = true
-				break
-			case bundleNot:
-				classifier := contentClassifierFile
-				if isContent {
-					classifier = contentClassifierContent
-				}
-				setClassifier(fi, classifier)
+			}
+
+			// The bundle files will be ordered first.
+			break
+		}
+
+		if len(duplicates) > 0 {
+			for i := len(duplicates) - 1; i >= 0; i-- {
+				idx := duplicates[i]
+				readdir = append(readdir[:idx], readdir[idx+1:]...)
 			}
 		}
 
@@ -155,7 +159,7 @@ func (c *pagesCollector) Collect() error {
 
 func (c *pagesCollector) isBundleHeader(fi hugofs.FileMetaInfo) bool {
 	class := fi.Meta().Classifier()
-	return class == "leaf" || class == "branch"
+	return class == files.ContentClassLeaf || class == files.ContentClassBranch
 }
 
 func (c *pagesCollector) getLang(fi hugofs.FileMetaInfo) string {
@@ -204,6 +208,7 @@ func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles pageBundl
 	lang := c.getLang(info)
 	bundle := getBundle(lang)
 	isBundleHeader := c.isBundleHeader(info)
+	classifier := info.Meta().Classifier()
 	if bundle == nil {
 		if isBundleHeader {
 			bundle = &fileinfoBundle{header: info}
@@ -216,6 +221,9 @@ func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles pageBundl
 
 	if !isBundleHeader {
 		bundle.resources = append(bundle.resources, info)
+	}
+
+	if classifier == files.ContentClassFile {
 		translations := info.Meta().Translations()
 		if len(translations) < len(bundles) {
 			for lang, b := range bundles {
@@ -247,8 +255,6 @@ type pageBundles map[string]*fileinfoBundle
 
 func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error {
 
-	c.sortBundleDir(readdir)
-
 	// Maps bundles to its language.
 	bundles := pageBundles{}
 
@@ -261,7 +267,7 @@ func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error
 		meta := fim.Meta()
 
 		switch meta.Classifier() {
-		case contentClassifierContent:
+		case files.ContentClassContent:
 			if err := c.handleFiles(fim); err != nil {
 				return err
 			}
@@ -276,8 +282,6 @@ func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error
 }
 
 func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, readdir []hugofs.FileMetaInfo) error {
-
-	c.sortBundleDir(readdir)
 
 	// Maps bundles to its language.
 	bundles := pageBundles{}
@@ -321,23 +325,6 @@ func (c *pagesCollector) handleFiles(fis ...hugofs.FileMetaInfo) error {
 		}
 	}
 	return nil
-}
-
-// Sort a bundle dir so the index files come first.
-func (c *pagesCollector) sortBundleDir(fis []hugofs.FileMetaInfo) {
-	sort.Slice(fis, func(i, j int) bool {
-		fii, fij := fis[i], fis[j]
-		fim, fjm := fii.Meta(), fij.Meta()
-
-		ic, jc := fim.Classifier(), fjm.Classifier()
-
-		if ic < jc {
-			return true
-		}
-
-		return fii.Name() < fij.Name()
-
-	})
 }
 
 type pagesCollectorProcessorProvider interface {
@@ -398,9 +385,9 @@ func (proc *pagesProcessor) Process(item interface{}) error {
 		meta := v.Meta()
 		classifier := meta.Classifier()
 		switch classifier {
-		case contentClassifierContent:
+		case files.ContentClassContent:
 			send(proc.newPageFromFi(v, nil))
-		case contentClassifierFile:
+		case files.ContentClassFile:
 			proc.sendError(proc.copyFile(v))
 		default:
 			panic(fmt.Sprintf("invalid classifier: %q", classifier))
@@ -449,12 +436,12 @@ func (proc *pagesProcessor) newPageFromBundle(b *fileinfoBundle) (*pageState, er
 			classifier := meta.Classifier()
 			var r resource.Resource
 			switch classifier {
-			case contentClassifierContent:
+			case files.ContentClassContent:
 				r, err = proc.newPageFromFi(rfi, p)
 				if err != nil {
 					return nil, err
 				}
-			case contentClassifierFile:
+			case files.ContentClassFile:
 				r, err = proc.newResource(rfi, p)
 				if err != nil {
 					return nil, err

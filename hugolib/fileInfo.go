@@ -16,13 +16,14 @@ package hugolib
 import (
 	"strings"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/pkg/errors"
 
 	"github.com/gohugoio/hugo/hugofs"
 
 	"github.com/spf13/afero"
 
-	"github.com/gohugoio/hugo/helpers"
 	"github.com/gohugoio/hugo/source"
 )
 
@@ -32,8 +33,6 @@ var (
 )
 
 type fileInfo struct {
-	bundleTp bundleDirType
-
 	source.File
 
 	overriddenLang string
@@ -67,15 +66,12 @@ func (fi *fileInfo) String() string {
 
 // TODO(bep) mod remove
 func (fi *fileInfo) isOwner() bool {
-	return fi.bundleTp > bundleNot
-}
-
-func IsContentFile(filename string) bool {
-	return contentFileExtensionsSet[strings.TrimPrefix(helpers.Ext(filename), ".")]
+	panic("not")
+	//return fi.bundleTp > bundleNot
 }
 
 func (fi *fileInfo) isContentFile() bool {
-	return contentFileExtensionsSet[fi.Ext()]
+	return files.IsContentExt(fi.Ext())
 }
 
 // TODO(bep) rename
@@ -109,8 +105,8 @@ func newFileInfo(sp *source.SourceSpec, fi hugofs.FileMetaInfo, tp bundleDirType
 	}
 
 	f := &fileInfo{
-		bundleTp: tp,
-		File:     baseFi,
+		//		bundleTp: tp,
+		File: baseFi,
 	}
 
 	lang := f.Lang()
@@ -135,7 +131,7 @@ const (
 // Returns the given file's name's bundle type and whether it is a content
 // file or not.
 func classifyBundledFile(name string) (bundleDirType, bool) {
-	if !IsContentFile(name) {
+	if !files.IsContentFile(name) {
 		return bundleNot, false
 	}
 	if strings.HasPrefix(name, "_index.") {

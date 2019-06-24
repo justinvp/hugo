@@ -23,6 +23,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/pkg/errors"
 
 	"github.com/spf13/afero"
@@ -50,19 +52,19 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 		}
 	}
 
-	// TODO(bep) mod just modify the slice
-	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) []os.FileInfo {
-		fisn := make([]os.FileInfo, len(fis))
+	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) {
+
 		for i, fi := range fis {
 			if fi.IsDir() {
 				filename := filepath.Join(name, fi.Name())
-				fisn[i] = decorateFileInfo("lfs-dir", fi, fs, fs.getOpener(filename), "", "", nil)
+				fis[i] = decorateFileInfo("lfs-dir", fi, fs, fs.getOpener(filename), "", "", nil)
 				continue
 			}
 
 			lang := source.Lang()
-			fileLang, translationBaseName := langInfoFrom(langs, fi.Name())
+			fileLang, translationBaseName, translationBaseNameWithExt := langInfoFrom(langs, fi.Name())
 			weight := 0
+
 			if fileLang != "" {
 				weight = 1
 				if fileLang == lang {
@@ -73,97 +75,47 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 			}
 
 			fim := NewFileMetaInfo(fi, FileMeta{
-				metaKeyLang:                lang,
-				metaKeyWeight:              weight,
-				metaKeyTranslationBaseName: translationBaseName,
+				metaKeyLang:                       lang,
+				metaKeyWeight:                     weight,
+				metaKeyTranslationBaseName:        translationBaseName,
+				metaKeyTranslationBaseNameWithExt: translationBaseNameWithExt,
+				metaKeyClassifier:                 files.ClassifyContentFile(fi.Name()),
 			})
 
-			fisn[i] = fim
+			fis[i] = fim
 		}
 
-		return fisn
 	}
 
-	// TODO(bep) mod simplify: Use weight as one of the sort keys in walker
-	filterDuplicates := func(fis []os.FileInfo) []os.FileInfo {
-		type idxWeight struct {
-			idx    int
-			weight int
-		}
-
-		keep := make(map[string]idxWeight)
-		keepDir := make(map[string]int)
-
+	all := func(fis []os.FileInfo) {
 		// Maps translation base name to a list of language codes.
 		translations := make(map[string][]string)
 		trackTranslation := func(meta FileMeta) {
-			name := meta.TranslationBaseName()
+			name := meta.TranslationBaseNameWithExt()
 			translations[name] = append(translations[name], meta.Lang())
 		}
-
-		for i, fi := range fis {
+		for _, fi := range fis {
 			if fi.IsDir() {
-				_, found := keepDir[fi.Name()]
-				if !found {
-					keepDir[fi.Name()] = i
-				}
 				continue
 			}
 			meta := fi.(FileMetaInfo).Meta()
 			trackTranslation(meta)
-			weight := meta.GetInt("weight")
-			if weight > 0 {
-				name := fi.Name()
-				k, found := keep[name]
-				if !found || weight > k.weight {
-					keep[name] = idxWeight{
-						idx:    i,
-						weight: weight,
-					}
-				}
-			}
+
 		}
 
-		toRemove := make(map[int]bool)
-		for i, fi := range fis {
-			if fi.IsDir() {
-				idx, found := keepDir[fi.Name()]
-				if found && i != idx {
-					toRemove[i] = true
-				}
-				continue
-			}
-			k, found := keep[fi.Name()]
-			if found && i != k.idx {
-				toRemove[i] = true
+		for _, fi := range fis {
+			fim := fi.(FileMetaInfo)
+			langs := translations[fim.Meta().TranslationBaseNameWithExt()]
+			if len(langs) > 0 {
+				fim.Meta()["translations"] = sortAndremoveStringDuplicates(langs)
 			}
 		}
-
-		for k, v := range translations {
-			translations[k] = sortAndremoveStringDuplicates(v)
-		}
-
-		filtered := fis[:0]
-		for i, fi := range fis {
-			if !toRemove[i] {
-				fim := fi.(FileMetaInfo)
-				langs := translations[fim.Meta().TranslationBaseName()]
-				if len(langs) > 0 {
-					fim.Meta()["translations"] = langs
-				}
-				filtered = append(filtered, fi)
-			}
-		}
-
-		fis = filtered
-
-		return fis
 	}
 
 	return &SliceFs{
-		filesystems: sources,
-		applyMeta:   applyMeta,
-		filterDir:   filterDuplicates,
+		filesystems:    sources,
+		applyPerSource: applyMeta,
+		applyAll:       all,
 	}, nil
 
 }
@@ -173,27 +125,17 @@ func NewSliceFs(sources ...FileMetaInfo) (afero.Fs, error) {
 		return NoOpFs, nil
 	}
 
-	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) []os.FileInfo {
-		fisn := make([]os.FileInfo, len(fis))
+	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) {
 		for i, fi := range fis {
 			if fi.IsDir() {
-				fisn[i] = decorateFileInfo("slicefs-dir", fi, fs, fs.getOpener(fi.(FileMetaInfo).Meta().Filename()), "", "", nil)
-			} else {
-				fisn[i] = fi
+				fis[i] = decorateFileInfo("slicefs-dir", fi, fs, fs.getOpener(fi.(FileMetaInfo).Meta().Filename()), "", "", nil)
 			}
 		}
-		return fisn
-	}
-
-	filterDir := func(fis []os.FileInfo) []os.FileInfo {
-		return fis
-
 	}
 
 	fs := &SliceFs{
-		filesystems: sources,
-		applyMeta:   applyMeta,
-		filterDir:   filterDir,
+		filesystems:    sources,
+		applyPerSource: applyMeta,
 	}
 
 	return fs, nil
@@ -204,11 +146,8 @@ func NewSliceFs(sources ...FileMetaInfo) (afero.Fs, error) {
 type SliceFs struct {
 	filesystems []FileMetaInfo
 
-	// Allows to filter duplicates etc. from any Readdir operation.
-	filterDir func(fis []os.FileInfo) []os.FileInfo
-
-	// Apply metadata to the result of any Readdir operation.
-	applyMeta func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) []os.FileInfo
+	applyPerSource func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo)
+	applyAll       func(fis []os.FileInfo)
 }
 
 func (fs *SliceFs) Chmod(n string, m os.FileMode) error {
@@ -339,7 +278,10 @@ func (fs *SliceFs) readDirs(name string, startIdx, count int) ([]os.FileInfo, er
 			if err != nil {
 				return nil, err
 			}
-			return fs.applyMeta(fs, lfs, name, dirs), nil
+			if fs.applyPerSource != nil {
+				fs.applyPerSource(fs, lfs, name, dirs)
+			}
+			return dirs, nil
 		}
 	}
 
@@ -359,9 +301,10 @@ func (fs *SliceFs) readDirs(name string, startIdx, count int) ([]os.FileInfo, er
 		}
 	}
 
-	filtered := fs.filterDir(dirs)
-
-	return filtered, nil
+	if fs.applyAll != nil {
+		fs.applyAll(dirs)
+	}
+	return dirs, nil
 
 }
 
@@ -440,7 +383,7 @@ func (f *sliceDir) WriteString(s string) (ret int, err error) {
 // Try to extract the language from the given filename.
 // Any valid language identificator in the name will win over the
 // language set on the file system, e.g. "mypost.en.md".
-func langInfoFrom(languages map[string]bool, name string) (string, string) {
+func langInfoFrom(languages map[string]bool, name string) (string, string, string) {
 	var lang string
 
 	baseName := filepath.Base(name)
@@ -459,7 +402,13 @@ func langInfoFrom(languages map[string]bool, name string) (string, string) {
 		translationBaseName = strings.TrimSuffix(translationBaseName, fileLangExt)
 	}
 
-	return lang, translationBaseName
+	translationBaseNameWithExt := translationBaseName
+
+	if ext != "" {
+		translationBaseNameWithExt += ext
+	}
+
+	return lang, translationBaseName, translationBaseNameWithExt
 
 }
 

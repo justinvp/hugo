@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/pkg/errors"
 
 	"github.com/spf13/cast"
@@ -30,18 +32,19 @@ import (
 )
 
 const (
-	metaKeyFilename            = "filename"
-	metaKeyName                = "name"
-	metaKeyPath                = "path"
-	metaKeyLang                = "lang"
-	metaKeyWeight              = "weight"
-	metaKeyFs                  = "fs"
-	metaKeyOpener              = "opener"
-	metaKeyIsOrdered           = "isOrdered"
-	metaKeyIsSymlink           = "isSymlink"
-	metaKeyClassifier          = "classifier"
-	metaKeyTranslationBaseName = "translationBaseName"
-	metaKeyTranslations        = "translations"
+	metaKeyFilename                   = "filename"
+	metaKeyName                       = "name"
+	metaKeyPath                       = "path"
+	metaKeyLang                       = "lang"
+	metaKeyWeight                     = "weight"
+	metaKeyFs                         = "fs"
+	metaKeyOpener                     = "opener"
+	metaKeyIsOrdered                  = "isOrdered"
+	metaKeyIsSymlink                  = "isSymlink"
+	metaKeyClassifier                 = "classifier"
+	metaKeyTranslationBaseName        = "translationBaseName"
+	metaKeyTranslationBaseNameWithExt = "translationBaseNameWithExt"
+	metaKeyTranslations               = "translations"
 )
 
 type FileMeta map[string]interface{}
@@ -66,6 +69,10 @@ func (f FileMeta) TranslationBaseName() string {
 	return f.stringV(metaKeyTranslationBaseName)
 }
 
+func (f FileMeta) TranslationBaseNameWithExt() string {
+	return f.stringV(metaKeyTranslationBaseNameWithExt)
+}
+
 func (f FileMeta) Translations() []string {
 	return cast.ToStringSlice(f[metaKeyTranslations])
 }
@@ -80,7 +87,7 @@ func (f FileMeta) Classifier() string {
 		return c
 	}
 
-	return "zzfile" // For sorting
+	return files.ContentClassFile // For sorting
 }
 
 func (f FileMeta) Lang() string {

@@ -16,6 +16,8 @@ package hugolib
 import (
 	"path/filepath"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/pkg/errors"
 
 	"github.com/gohugoio/hugo/common/hugio"
@@ -25,27 +27,6 @@ import (
 	"github.com/gohugoio/hugo/resources"
 	"github.com/gohugoio/hugo/resources/resource"
 )
-
-var (
-	// This should be the only list of valid extensions for content files.
-	contentFileExtensions = []string{
-		"html", "htm",
-		"mdown", "markdown", "md",
-		"asciidoc", "adoc", "ad",
-		"rest", "rst",
-		"mmark",
-		"org",
-		"pandoc", "pdc"}
-
-	contentFileExtensionsSet map[string]bool
-)
-
-func init() {
-	contentFileExtensionsSet = make(map[string]bool)
-	for _, ext := range contentFileExtensions {
-		contentFileExtensionsSet[ext] = true
-	}
-}
 
 func newHandlerChain(s *Site) contentHandler {
 	c := &contentHandlers{s: s}
@@ -167,7 +148,7 @@ func (c *handlerContext) supports(exts ...string) bool {
 }
 
 func (c *handlerContext) isContentFile() bool {
-	return contentFileExtensionsSet[c.ext()]
+	return files.IsContentExt(c.ext())
 }
 
 type (

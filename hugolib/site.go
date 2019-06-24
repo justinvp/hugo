@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/gohugoio/hugo/common/maps"
 
 	"github.com/gohugoio/hugo/hugofs"
@@ -1030,7 +1032,7 @@ func (s *Site) processPartial(events []fsnotify.Event) (whatChanged, error) {
 			}
 		}
 
-		if removed && IsContentFile(ev.Name) {
+		if removed && files.IsContentFile(ev.Name) {
 			h.removePageByFilename(ev.Name)
 		}
 

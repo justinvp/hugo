@@ -14,6 +14,7 @@
 package hugofs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,7 +43,8 @@ type Walkway struct {
 	walked bool
 
 	// We may traverse symbolic links and bite ourself.
-	seen map[string]bool
+	seen      map[string]bool
+	inSymlink bool
 
 	// Optional hooks
 	hookPre  WalkHook
@@ -147,6 +149,10 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 	openFs := w.fs
 
 	if meta.IsSymlink() {
+		w.inSymlink = true
+	}
+
+	if w.inSymlink {
 		// Symlinks will only work in the filesystems defined by the project,
 		// (not theme components), and we do follow them.
 		filenameToOpen = filename
@@ -161,7 +167,7 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 	f, err := openFs.Open(filenameToOpen)
 
 	if err != nil {
-		return walkFn(path, info, errors.Wrapf(err, "walk: open %q (path: %q)", filenameToOpen, path))
+		return walkFn(path, info, errors.Wrapf(err, "walk: open %q (path: %q, isSymlink: %t)", filenameToOpen, path, isSymlink(info)))
 	}
 
 	if dirEntries == nil {
@@ -177,6 +183,23 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 			sort.Slice(dirEntries, func(i, j int) bool {
 				fii := dirEntries[i]
 				fij := dirEntries[j]
+
+				fim, fjm := fii.Meta(), fij.Meta()
+
+				// Pull bundle headers to the top.
+				ficlass, fjclass := fim.Classifier(), fjm.Classifier()
+				if ficlass != fjclass {
+					return ficlass < fjclass
+				}
+
+				// With multiple content dirs with different languages,
+				// there can be duplicate files, and a weight will be added
+				// to the closest one.
+				fiw, fjw := fim.Weight(), fjm.Weight()
+				if fiw != fjw {
+					return fiw > fjw
+				}
+
 				return fii.Name() < fij.Name()
 			})
 		}
@@ -193,7 +216,6 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 
 	for _, fi := range dirEntries {
 		fim := fi.(FileMetaInfo)
-		var err error
 
 		meta := fim.Meta()
 
@@ -205,10 +227,6 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 		}
 
 		meta[metaKeyPath] = pathMeta
-
-		if err != nil {
-			return walkFn(pathn, fim, err)
-		}
 
 		if fim.IsDir() {
 
@@ -222,7 +240,9 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 			}
 		}
 
-		err = w.walk(pathn, fim, nil, walkFn)
+		fmt.Println(">>> WALK", pathn, fim.IsDir())
+
+		err := w.walk(pathn, fim, nil, walkFn)
 		if err != nil {
 			if !fi.IsDir() || err != filepath.SkipDir {
 				return err
