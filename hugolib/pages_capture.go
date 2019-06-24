@@ -16,6 +16,7 @@ package hugolib
 import (
 	"context"
 	"fmt"
+	pth "path"
 	"path/filepath"
 	"strings"
 
@@ -66,10 +67,10 @@ type pagesCollector struct {
 }
 
 func (c *pagesCollector) Collect() error {
+
 	c.proc.Start(context.Background())
 
-	preHook := func(dir hugofs.FileMetaInfo, path string, readdir []hugofs.FileMetaInfo) error {
-
+	preHook := func(dir hugofs.FileMetaInfo, path string, readdir []hugofs.FileMetaInfo) ([]hugofs.FileMetaInfo, error) {
 		var (
 			isBranchBundle bool
 			isLeafBundle   bool
@@ -81,6 +82,7 @@ func (c *pagesCollector) Collect() error {
 		seen := make(map[string]bool)
 
 		for i, fi := range readdir {
+
 			if fi.IsDir() {
 				continue
 			}
@@ -88,11 +90,13 @@ func (c *pagesCollector) Collect() error {
 			meta := fi.Meta()
 			class := meta.Classifier()
 			translationBase := meta.TranslationBaseNameWithExt()
-			if seen[translationBase] {
+			key := pth.Join(meta.Lang(), translationBase)
+
+			if seen[key] {
 				duplicates = append(duplicates, i)
 				continue
 			}
-			seen[translationBase] = true
+			seen[key] = true
 
 			switch class {
 			case files.ContentClassLeaf:
@@ -101,8 +105,6 @@ func (c *pagesCollector) Collect() error {
 				isBranchBundle = true
 			}
 
-			// The bundle files will be ordered first.
-			break
 		}
 
 		if len(duplicates) > 0 {
@@ -114,22 +116,24 @@ func (c *pagesCollector) Collect() error {
 
 		if isBranchBundle {
 			if err := c.handleBundleBranch(readdir); err != nil {
-				return err
+				return nil, err
 			}
 			// A branch bundle is only this directory level, so keep walking.
-			return nil
+			return readdir, nil
 		} else if isLeafBundle {
+
 			if err := c.handleBundleLeaf(dir, path, readdir); err != nil {
-				return err
+				return nil, err
 			}
-			return filepath.SkipDir
+
+			return nil, filepath.SkipDir
 		}
 
 		if err := c.handleFiles(readdir...); err != nil {
-			return nil
+			return nil, err
 		}
 
-		return nil
+		return readdir, nil
 	}
 
 	wfn := func(path string, info hugofs.FileMetaInfo, err error) error {
@@ -282,7 +286,6 @@ func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error
 }
 
 func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, readdir []hugofs.FileMetaInfo) error {
-
 	// Maps bundles to its language.
 	bundles := pageBundles{}
 
@@ -320,6 +323,7 @@ func (c *pagesCollector) handleFiles(fis ...hugofs.FileMetaInfo) error {
 		if fi.IsDir() {
 			continue
 		}
+
 		if err := c.proc.Process(fi); err != nil {
 			return err
 		}
@@ -366,6 +370,10 @@ func (proc *pagesProcessor) sendError(err error) {
 	proc.h.SendError(err)
 }
 
+func (proc *pagesProcessor) shouldSkip(fim hugofs.FileMetaInfo) bool {
+	return proc.sp.DisabledLanguages[fim.Meta().Lang()]
+}
+
 func (proc *pagesProcessor) Process(item interface{}) error {
 	send := func(p *pageState, err error) {
 		if err != nil {
@@ -379,10 +387,17 @@ func (proc *pagesProcessor) Process(item interface{}) error {
 	// Page bundles mapped to their language.
 	case pageBundles:
 		for _, bundle := range v {
+			if proc.shouldSkip(bundle.header) {
+				continue
+			}
 			send(proc.newPageFromBundle(bundle))
 		}
 	case hugofs.FileMetaInfo:
+		if proc.shouldSkip(v) {
+			return nil
+		}
 		meta := v.Meta()
+
 		classifier := meta.Classifier()
 		switch classifier {
 		case files.ContentClassContent:
@@ -392,6 +407,8 @@ func (proc *pagesProcessor) Process(item interface{}) error {
 		default:
 			panic(fmt.Sprintf("invalid classifier: %q", classifier))
 		}
+	default:
+		panic(fmt.Sprintf("unrecognized item type in Process: %T", item))
 	}
 
 	return nil
@@ -405,7 +422,7 @@ func (proc *pagesProcessor) copyFile(fim hugofs.FileMetaInfo) error {
 		return errors.Wrap(err, "copyFile: failed to open")
 	}
 
-	target := meta.Path()
+	target := filepath.Join(s.PathSpec.GetTargetLanguageBasePath(), meta.Path())
 
 	defer f.Close()
 

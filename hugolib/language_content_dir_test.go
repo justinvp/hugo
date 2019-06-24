@@ -223,6 +223,7 @@ Content.
 	b.AssertFileContent("/my/project/public/nn/mystatic/file1.yaml", "nn")
 
 	//dumpPages(nnSite.RegularPages...)
+
 	assert.Equal(12, len(nnSite.RegularPages()))
 	assert.Equal(13, len(enSite.RegularPages()))
 

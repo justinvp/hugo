@@ -14,7 +14,6 @@
 package hugofs
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,7 +26,7 @@ import (
 
 type (
 	WalkFunc func(path string, info FileMetaInfo, err error) error
-	WalkHook func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
+	WalkHook func(dir FileMetaInfo, path string, readdir []FileMetaInfo) ([]FileMetaInfo, error)
 )
 
 type Walkway struct {
@@ -61,8 +60,8 @@ type WalkwayConfig struct {
 	DirEntries []FileMetaInfo
 
 	WalkFn   WalkFunc
-	HookPre  func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
-	HookPost func(dir FileMetaInfo, path string, readdir []FileMetaInfo) error
+	HookPre  func(dir FileMetaInfo, path string, readdir []FileMetaInfo) ([]FileMetaInfo, error)
+	HookPost func(dir FileMetaInfo, path string, readdir []FileMetaInfo) ([]FileMetaInfo, error)
 }
 
 func NewWalkway(cfg WalkwayConfig) *Walkway {
@@ -143,6 +142,8 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 		return nil
 	}
 
+	// TODO(bep) mod make sure that slice_fs etc. do the stat even for symlinks
+
 	meta := info.Meta()
 	filename := meta.Filename()
 	filenameToOpen := path // may be a composite
@@ -152,25 +153,25 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 		w.inSymlink = true
 	}
 
-	if w.inSymlink {
+	// TODO(bep) mod
+	if meta.IsSymlink() {
 		// Symlinks will only work in the filesystems defined by the project,
 		// (not theme components), and we do follow them.
-		filenameToOpen = filename
+		//filenameToOpen = filename
 		// This is a full filename to a file on the Os filesystem.
-		openFs = osDecorated
-
+		//openFs = osDecorated
 	}
 
 	// Prevent infinite recursion.
 	w.isSeen(filename)
 
-	f, err := openFs.Open(filenameToOpen)
-
-	if err != nil {
-		return walkFn(path, info, errors.Wrapf(err, "walk: open %q (path: %q, isSymlink: %t)", filenameToOpen, path, isSymlink(info)))
-	}
-
 	if dirEntries == nil {
+		f, err := openFs.Open(filenameToOpen)
+
+		if err != nil {
+			return walkFn(path, info, errors.Wrapf(err, "walk: open %q (path: %q, isSymlink: %t)", filenameToOpen, path, isSymlink(info)))
+		}
+
 		fis, err := f.Readdir(-1)
 		f.Close()
 		if err != nil {
@@ -205,15 +206,7 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 		}
 	}
 
-	if w.hookPre != nil {
-		if err := w.hookPre(info, path, dirEntries); err != nil {
-			if err == filepath.SkipDir {
-				return nil
-			}
-			return err
-		}
-	}
-
+	// First add some metadata to the dir entries
 	for _, fi := range dirEntries {
 		fim := fi.(FileMetaInfo)
 
@@ -227,6 +220,7 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 		}
 
 		meta[metaKeyPath] = pathMeta
+		meta[metaKeyPathWalk] = pathn
 
 		if fim.IsDir() {
 
@@ -236,13 +230,31 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 				// Possible cyclic reference
 				// TODO(bep) mod check if we log some warning about this in the
 				// existing content walker.
-				continue
+				meta[metaKeyDoSkip] = true
+
 			}
 		}
 
-		fmt.Println(">>> WALK", pathn, fim.IsDir())
+	}
 
-		err := w.walk(pathn, fim, nil, walkFn)
+	if w.hookPre != nil {
+		dirEntries, err = w.hookPre(info, path, dirEntries)
+		if err != nil {
+			if err == filepath.SkipDir {
+				return nil
+			}
+			return err
+		}
+	}
+
+	for _, fi := range dirEntries {
+		fim := fi.(FileMetaInfo)
+		meta := fim.Meta()
+		if meta.GetBool(metaKeyDoSkip) {
+			continue
+		}
+
+		err := w.walk(meta.GetString(metaKeyPathWalk), fim, nil, walkFn)
 		if err != nil {
 			if !fi.IsDir() || err != filepath.SkipDir {
 				return err
@@ -251,7 +263,8 @@ func (w *Walkway) walk(path string, info FileMetaInfo, dirEntries []FileMetaInfo
 	}
 
 	if w.hookPost != nil {
-		if err := w.hookPost(info, path, dirEntries); err != nil {
+		dirEntries, err = w.hookPost(info, path, dirEntries)
+		if err != nil {
 			if err == filepath.SkipDir {
 				return nil
 			}

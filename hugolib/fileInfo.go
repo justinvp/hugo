@@ -87,10 +87,7 @@ func newFileInfo2(sp *source.SourceSpec, fi hugofs.FileMetaInfo) (*fileInfo, err
 		File: baseFi,
 	}
 
-	lang := f.Lang()
-
-	// TODO(bep) mod do this ... somewhere else.
-	f.disabled = lang != "" && sp.DisabledLanguages[lang]
+	// TODO(bep) mod remove disabled f.disabled = lang != "" && sp.DisabledLanguages[lang]
 
 	return f, nil
 

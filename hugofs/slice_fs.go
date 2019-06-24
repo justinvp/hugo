@@ -99,6 +99,7 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 				continue
 			}
 			meta := fi.(FileMetaInfo).Meta()
+
 			trackTranslation(meta)
 
 		}
@@ -243,11 +244,10 @@ func (fs *SliceFs) getOpener(name string) func() (afero.File, error) {
 }
 
 func (fs *SliceFs) pickFirst(name string) (os.FileInfo, int, error) {
-
 	for i, mfs := range fs.filesystems {
 		meta := mfs.Meta()
 		fs := meta.Fs()
-		fi, err := fs.Stat(name)
+		fi, err := lstatIfPossible(fs, name)
 		if err == nil {
 			// Gotta match!
 			return fi, i, nil
@@ -264,7 +264,6 @@ func (fs *SliceFs) pickFirst(name string) (os.FileInfo, int, error) {
 }
 
 func (fs *SliceFs) readDirs(name string, startIdx, count int) ([]os.FileInfo, error) {
-
 	collect := func(lfs FileMeta) ([]os.FileInfo, error) {
 		d, err := lfs.Fs().Open(name)
 		if err != nil {
@@ -296,14 +295,38 @@ func (fs *SliceFs) readDirs(name string, startIdx, count int) ([]os.FileInfo, er
 		}
 
 		dirs = append(dirs, fis...)
-		if count > 0 && len(dirs) >= count {
-			return dirs[:count], nil
+
+	}
+
+	seen := make(map[string]bool)
+	var duplicates []int
+	for i, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		if seen[dir.Name()] {
+			duplicates = append(duplicates, i)
+		} else {
+			seen[dir.Name()] = true
+		}
+	}
+
+	// Remove duplicate directories, keep first.
+	if len(duplicates) > 0 {
+		for i := len(duplicates) - 1; i >= 0; i-- {
+			idx := duplicates[i]
+			dirs = append(dirs[:idx], dirs[idx+1:]...)
 		}
 	}
 
 	if fs.applyAll != nil {
 		fs.applyAll(dirs)
 	}
+
+	if count > 0 && len(dirs) >= count {
+		return dirs[:count], nil
+	}
+
 	return dirs, nil
 
 }

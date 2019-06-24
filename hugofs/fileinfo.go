@@ -35,12 +35,14 @@ const (
 	metaKeyFilename                   = "filename"
 	metaKeyName                       = "name"
 	metaKeyPath                       = "path"
+	metaKeyPathWalk                   = "pathWalk"
 	metaKeyLang                       = "lang"
 	metaKeyWeight                     = "weight"
 	metaKeyFs                         = "fs"
 	metaKeyOpener                     = "opener"
 	metaKeyIsOrdered                  = "isOrdered"
 	metaKeyIsSymlink                  = "isSymlink"
+	metaKeyDoSkip                     = "doSkip"
 	metaKeyClassifier                 = "classifier"
 	metaKeyTranslationBaseName        = "translationBaseName"
 	metaKeyTranslationBaseNameWithExt = "translationBaseNameWithExt"
@@ -85,6 +87,10 @@ func (f FileMeta) Classifier() string {
 	c := f.stringV(metaKeyClassifier)
 	if c != "" {
 		return c
+	}
+
+	if c := files.ClassifyContentFile(f.Name()); c != "" {
+		// TODO(bep) mod return c
 	}
 
 	return files.ContentClassFile // For sorting

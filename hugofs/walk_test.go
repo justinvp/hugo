@@ -97,7 +97,7 @@ func TestWalkSymbolicLink(t *testing.T) {
 	blogDir := filepath.Join(workDir, "blog")
 	docsDir := filepath.Join(workDir, "docs")
 	blogReal := filepath.Join(blogDir, "real")
-	blogRealSub := filepath.Join(blogReal, "sub1")
+	blogRealSub := filepath.Join(blogReal, "sub")
 	assert.NoError(os.MkdirAll(blogRealSub, 0777))
 	assert.NoError(os.MkdirAll(docsDir, 0777))
 	afero.WriteFile(fs, filepath.Join(blogRealSub, "a.txt"), []byte("content"), 0777)
