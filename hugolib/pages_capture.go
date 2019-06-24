@@ -167,7 +167,7 @@ func (c *pagesCollector) getLang(fi hugofs.FileMetaInfo) string {
 	return c.sp.DefaultContentLanguage
 }
 
-func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles map[string]*fileinfoBundle) {
+func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles pageBundles) {
 	getBundle := func(lang string) *fileinfoBundle {
 		return bundles[lang]
 	}
@@ -216,6 +216,17 @@ func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles map[strin
 
 	if !isBundleHeader {
 		bundle.resources = append(bundle.resources, info)
+		translations := info.Meta().Translations()
+		if len(translations) < len(bundles) {
+			for lang, b := range bundles {
+				if !stringSliceContains(lang, translations...) {
+					// Clone and add it to the bundle.
+					clone := c.cloneFileInfo(info)
+					clone.Meta()["lang"] = lang
+					b.resources = append(b.resources, clone)
+				}
+			}
+		}
 	}
 }
 
@@ -232,12 +243,14 @@ func (c *pagesCollector) cloneFileInfo(fi hugofs.FileMetaInfo) hugofs.FileMetaIn
 	return hugofs.NewFileMetaInfo(fi, cm)
 }
 
+type pageBundles map[string]*fileinfoBundle
+
 func (c *pagesCollector) handleBundleBranch(readdir []hugofs.FileMetaInfo) error {
 
 	c.sortBundleDir(readdir)
 
 	// Maps bundles to its language.
-	bundles := make(map[string]*fileinfoBundle)
+	bundles := pageBundles{}
 
 	for _, fim := range readdir {
 
@@ -267,7 +280,7 @@ func (c *pagesCollector) handleBundleLeaf(dir hugofs.FileMetaInfo, path string, 
 	c.sortBundleDir(readdir)
 
 	// Maps bundles to its language.
-	bundles := make(map[string]*fileinfoBundle)
+	bundles := pageBundles{}
 
 	walk := func(path string, info hugofs.FileMetaInfo, err error) error {
 		if err != nil {
@@ -377,7 +390,7 @@ func (proc *pagesProcessor) Process(item interface{}) error {
 
 	switch v := item.(type) {
 	// Page bundles mapped to their language.
-	case map[string]*fileinfoBundle:
+	case pageBundles:
 		for _, bundle := range v {
 			send(proc.newPageFromBundle(bundle))
 		}

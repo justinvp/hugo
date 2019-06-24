@@ -109,6 +109,14 @@ func TestLanguageMeta(t *testing.T) {
 		writeFile(cfg, "fullytranslated/data.json")
 	}
 
+	// Partly translated
+	for i, cfg := range testConfigs {
+		if i == 0 {
+			continue
+		}
+		writeFile(cfg, "partlytranslated/data.json")
+	}
+
 	var rootMappings []RootMapping
 
 	for _, cfg := range testConfigs {
@@ -151,6 +159,17 @@ func TestLanguageMeta(t *testing.T) {
 
 	fi := pickOne(fis, func(fim FileMetaInfo) bool { return fim.Name() == "index.md" && fim.Meta().Lang() == "sv" })
 
-	fmt.Println(fi.Meta())
+	meta := fi.Meta()
+	assert.Equal([]string{"en", "nn", "sv"}, meta.Translations())
 
+	partlytranslated, err := langFs.Open("partlytranslated")
+	assert.NoError(err)
+
+	fis, err = partlytranslated.Readdir(-1)
+	assert.NoError(err)
+	assert.Equal(2, len(fis))
+
+	fi = pickOne(fis, func(fim FileMetaInfo) bool { return fim.Meta().Lang() == "nn" })
+	meta = fi.Meta()
+	assert.Equal([]string{"nn", "sv"}, meta.Translations())
 }

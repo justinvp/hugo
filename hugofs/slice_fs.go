@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -49,8 +50,8 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 		}
 	}
 
+	// TODO(bep) mod just modify the slice
 	applyMeta := func(fs *SliceFs, source FileMeta, name string, fis []os.FileInfo) []os.FileInfo {
-		// TODO(bep) add a translations slice to meta
 		fisn := make([]os.FileInfo, len(fis))
 		for i, fi := range fis {
 			if fi.IsDir() {
@@ -93,6 +94,13 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 		keep := make(map[string]idxWeight)
 		keepDir := make(map[string]int)
 
+		// Maps translation base name to a list of language codes.
+		translations := make(map[string][]string)
+		trackTranslation := func(meta FileMeta) {
+			name := meta.TranslationBaseName()
+			translations[name] = append(translations[name], meta.Lang())
+		}
+
 		for i, fi := range fis {
 			if fi.IsDir() {
 				_, found := keepDir[fi.Name()]
@@ -102,6 +110,7 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 				continue
 			}
 			meta := fi.(FileMetaInfo).Meta()
+			trackTranslation(meta)
 			weight := meta.GetInt("weight")
 			if weight > 0 {
 				name := fi.Name()
@@ -130,12 +139,22 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 			}
 		}
 
+		for k, v := range translations {
+			translations[k] = sortAndremoveStringDuplicates(v)
+		}
+
 		filtered := fis[:0]
 		for i, fi := range fis {
 			if !toRemove[i] {
+				fim := fi.(FileMetaInfo)
+				langs := translations[fim.Meta().TranslationBaseName()]
+				if len(langs) > 0 {
+					fim.Meta()["translations"] = langs
+				}
 				filtered = append(filtered, fi)
 			}
 		}
+
 		fis = filtered
 
 		return fis
@@ -239,11 +258,6 @@ func (fs *SliceFs) Open(name string) (afero.File, error) {
 	}
 
 	var debug string
-
-	if fim, ok := fi.(FileMetaInfo); ok {
-		// TODO(bep) mod remove
-		debug = fmt.Sprint("OPEN: ", fim.Meta(), name)
-	}
 
 	return &sliceDir{
 		debug:   debug,
@@ -457,4 +471,19 @@ func printFs(fs afero.Fs, path string, w io.Writer) {
 		fmt.Println("p:::", path)
 		return nil
 	})
+}
+
+func sortAndremoveStringDuplicates(s []string) []string {
+	ss := sort.StringSlice(s)
+	ss.Sort()
+	i := 0
+	for j := 1; j < len(s); j++ {
+		if !ss.Less(i, j) {
+			continue
+		}
+		i++
+		s[i] = s[j]
+	}
+
+	return s[:i+1]
 }

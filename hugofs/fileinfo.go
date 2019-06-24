@@ -41,6 +41,7 @@ const (
 	metaKeyIsSymlink           = "isSymlink"
 	metaKeyClassifier          = "classifier"
 	metaKeyTranslationBaseName = "translationBaseName"
+	metaKeyTranslations        = "translations"
 )
 
 type FileMeta map[string]interface{}
@@ -63,6 +64,10 @@ func (f FileMeta) Filename() string {
 
 func (f FileMeta) TranslationBaseName() string {
 	return f.stringV(metaKeyTranslationBaseName)
+}
+
+func (f FileMeta) Translations() []string {
+	return cast.ToStringSlice(f[metaKeyTranslations])
 }
 
 func (f FileMeta) Name() string {
