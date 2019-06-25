@@ -67,10 +67,6 @@ func NewRootMappingFs(fs afero.Fs, rms ...RootMapping) (*RootMappingFs, error) {
 		rootMapToReal.Insert(key, mappings)
 	}
 
-	if rfs, ok := fs.(*afero.BasePathFs); ok {
-		fs = DecorateBasePathFs(rfs)
-	}
-
 	rfs := &RootMappingFs{Fs: fs,
 		virtualRoots:  rms,
 		rootMapToReal: rootMapToReal.Commit().Root()}
@@ -124,7 +120,6 @@ type RootMappingFs struct {
 	virtualRoots  []RootMapping
 }
 
-// TODO(bep) mod consider []afero.Fs
 func (fs *RootMappingFs) Dirs(base string) ([]FileMetaInfo, error) {
 	roots := fs.getRootsWithPrefix(base)
 
@@ -155,36 +150,34 @@ func (fs *RootMappingFs) Dirs(base string) ([]FileMetaInfo, error) {
 	return fss, nil
 }
 
-// LstatIfPossible returns the os.FileInfo structure describing a given file.
-// It attempts to use Lstat if supported or defers to the os.  In addition to
-// the FileInfo, a boolean is returned telling whether Lstat was called.
-func (fs *RootMappingFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
+type MultiFileInfo interface {
+	FileMetaInfo
+	Fis() []FileMetaInfo
+}
 
-	if fs.isRoot(name) {
-		opener := func() (afero.File, error) {
-			return &rootMappingFile{name: name, fs: fs}, nil
-		}
-		return newDirNameOnlyFileInfo(name, true, opener), false, nil
-	}
+type multiFileInfo struct {
+	FileMetaInfo
+	fis []FileMetaInfo
+}
 
-	root, found, err := fs.getRoot(name)
-	if err != nil {
-		return nil, false, err
-	}
+func newMultiFileInfo(fis ...FileMetaInfo) os.FileInfo {
+	return &multiFileInfo{FileMetaInfo: fis[0], fis: fis}
+}
 
-	if !found {
-		return nil, false, os.ErrNotExist
-	}
+func (fi *multiFileInfo) Fis() []FileMetaInfo {
+	return fi.fis
+}
 
+func (fs *RootMappingFs) statRoot(root RootMapping, name string) (os.FileInfo, bool, error) {
 	filename := root.filename(name)
 
 	var b bool
 	var fi os.FileInfo
+	var err error
 
 	if ls, ok := fs.Fs.(afero.Lstater); ok {
 		fi, b, err = ls.LstatIfPossible(filename)
 		if err != nil {
-
 			return nil, b, err
 		}
 
@@ -200,7 +193,7 @@ func (fs *RootMappingFs) LstatIfPossible(name string) (os.FileInfo, bool, error)
 		return fs.Fs.Open(filename)
 	}
 
-	return decorateFileInfo("rm-fs", fi, fs.Fs, opener, "", root.path, root.Meta), b, nil
+	return decorateFileInfo("rm-fs", fi, fs.Fs, opener, "", "", root.Meta), b, nil
 }
 
 // Open opens the named file for reading.
@@ -208,21 +201,102 @@ func (fs *RootMappingFs) Open(name string) (afero.File, error) {
 	if fs.isRoot(name) {
 		return &rootMappingFile{name: name, fs: fs}, nil
 	}
-	root, found, err := fs.getRoot(name)
+
+	fi, err := fs.Stat(name)
 	if err != nil {
 		return nil, err
 	}
 
-	if !found {
-		return nil, os.ErrNotExist
+	multifi, ok := fi.(MultiFileInfo)
+	if !ok {
+		return fi.(FileMetaInfo).Meta().Open()
 	}
 
+	if !multifi.IsDir() {
+		return nil, errors.New("multiple matches in Open()")
+	}
+
+	// Create a union file
+	// UnionFile base, layer on top
+	return fs.newUnionFile(multifi.Fis()...)
+
+}
+
+func (fs *RootMappingFs) newUnionFile(fis ...FileMetaInfo) (afero.File, error) {
+	f, err := fis[0].Meta().Open()
+	if len(fis) == 1 {
+		return f, err
+	}
+
+	next, err := fs.newUnionFile(fis[1:]...)
+	if err != nil {
+		return nil, err
+	}
+
+	uf := &afero.UnionFile{Base: f, Layer: next}
+
+	uf.Merger = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error) {
+		return append(bofi, lofi...), nil
+	}
+
+	return uf, nil
+
+}
+
+func (fs *RootMappingFs) open(root RootMapping, name string) (afero.File, error) {
 	filename := root.filename(name)
 	f, err := fs.Fs.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	return &rootMappingFile{File: f, name: name, fs: fs, rm: root}, nil
+}
+
+// LstatIfPossible returns the os.FileInfo structure describing a given file.
+// It attempts to use Lstat if supported or defers to the os.  In addition to
+// the FileInfo, a boolean is returned telling whether Lstat was called.
+func (fs *RootMappingFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
+
+	if fs.isRoot(name) {
+		opener := func() (afero.File, error) {
+			return &rootMappingFile{name: name, fs: fs}, nil
+		}
+		return newDirNameOnlyFileInfo(name, true, opener), false, nil
+	}
+
+	roots := fs.getRoots(name)
+	if len(roots) == 0 {
+		return nil, false, os.ErrNotExist
+	}
+
+	var (
+		fis []FileMetaInfo
+		b   bool
+		fi  os.FileInfo
+		err error
+	)
+
+	for _, root := range roots {
+		fi, b, err = fs.statRoot(root, name)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, false, err
+		}
+		fis = append(fis, fi.(FileMetaInfo))
+	}
+
+	if len(fis) == 0 {
+		return nil, false, os.ErrNotExist
+	}
+
+	if len(fis) == 1 {
+		return fis[0], b, nil
+	}
+
+	return newMultiFileInfo(fis...), b, nil
+
 }
 
 // Stat returns the os.FileInfo structure describing a given file.  If there is

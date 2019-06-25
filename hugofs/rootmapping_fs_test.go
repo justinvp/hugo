@@ -84,23 +84,40 @@ func TestRootMappingFsMount(t *testing.T) {
 
 	testfile := "test.txt"
 
-	assert.NoError(afero.WriteFile(fs, filepath.Join("themes/a/myblogcontent", testfile), []byte("some content"), 0755))
+	assert.NoError(afero.WriteFile(fs, filepath.Join("themes/a/mynoblogcontent", testfile), []byte("some no content"), 0755))
+	assert.NoError(afero.WriteFile(fs, filepath.Join("themes/a/myenblogcontent", testfile), []byte("some en content"), 0755))
+	assert.NoError(afero.WriteFile(fs, filepath.Join("themes/a/mysvblogcontent", testfile), []byte("some sv content"), 0755))
+	assert.NoError(afero.WriteFile(fs, filepath.Join("themes/a/mysvblogcontent", "other.txt"), []byte("some sv content"), 0755))
 
 	bfs := afero.NewBasePathFs(fs, "themes/a").(*afero.BasePathFs)
-	rm := RootMapping{
-		From: "content/blog",
-		To:   "myblogcontent",
-		Meta: FileMeta{"lang": "no"},
+	rm := []RootMapping{
+		RootMapping{From: "content/blog",
+			To:   "mynoblogcontent",
+			Meta: FileMeta{"lang": "no"},
+		},
+		RootMapping{From: "content/blog",
+			To:   "myenblogcontent",
+			Meta: FileMeta{"lang": "en"},
+		},
+		RootMapping{From: "content/blog",
+			To:   "mysvblogcontent",
+			Meta: FileMeta{"lang": "sv"},
+		},
 	}
 
-	rfs, err := NewRootMappingFs(bfs, rm)
+	rfs, err := NewRootMappingFs(bfs, rm...)
 	assert.NoError(err)
 
 	blog, err := rfs.Stat("content/blog")
 	assert.NoError(err)
+	multi := blog.(MultiFileInfo)
 	blogm := blog.(FileMetaInfo).Meta()
-	assert.Equal("themes/a/myblogcontent", blogm.Filename())
 	assert.Equal("no", blogm.Lang())
+
+	assert.Equal("no", multi.Fis()[0].Meta().Lang())
+	assert.Equal("en", multi.Fis()[1].Meta().Lang())
+
+	//assert.Equal("themes/a/myblogcontent", blogm.Filename())
 
 	// TODO(bep) mod
 	/*	f, err := blogm.Open()
@@ -111,23 +128,22 @@ func TestRootMappingFsMount(t *testing.T) {
 		assert.Equal([]string{"test.txt"}, dirs1)
 	*/
 
-	dirs2, err := afero.ReadDir(rfs, "content/blog")
+	files, err := afero.ReadDir(rfs, "content/blog")
 	assert.NoError(err)
-	assert.Equal(1, len(dirs2))
-	testfilefi := dirs2[0]
+	assert.Equal(4, len(files))
+
+	testfilefi := files[1]
 	assert.Equal(testfile, testfilefi.Name())
 
 	testfilem := testfilefi.(FileMetaInfo).Meta()
-	assert.Equal("themes/a/myblogcontent/test.txt", testfilem.Filename())
-
-	assert.Equal("blog/test.txt", testfilem.Path())
+	assert.Equal("themes/a/mynoblogcontent/test.txt", testfilem.Filename())
 
 	tf, err := testfilem.Open()
 	assert.NoError(err)
 	defer tf.Close()
 	c, err := ioutil.ReadAll(tf)
 	assert.NoError(err)
-	assert.Equal("some content", string(c))
+	assert.Equal("some no content", string(c))
 
 }
 
