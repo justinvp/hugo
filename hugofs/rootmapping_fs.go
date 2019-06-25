@@ -209,21 +209,26 @@ func (fs *RootMappingFs) Open(name string) (afero.File, error) {
 
 	multifi, ok := fi.(MultiFileInfo)
 	if !ok {
-		return fi.(FileMetaInfo).Meta().Open()
+		meta := fi.(FileMetaInfo).Meta()
+		f, err := meta.Open()
+		if err != nil {
+			return nil, err
+		}
+		return &rootMappingFile2{File: f, fs: fs, meta: meta}, nil
 	}
 
 	if !multifi.IsDir() {
 		return nil, errors.New("multiple matches in Open()")
 	}
 
-	// Create a union file
-	// UnionFile base, layer on top
 	return fs.newUnionFile(multifi.Fis()...)
 
 }
 
 func (fs *RootMappingFs) newUnionFile(fis ...FileMetaInfo) (afero.File, error) {
-	f, err := fis[0].Meta().Open()
+	meta := fis[0].Meta()
+	f, err := meta.Open()
+	f = &rootMappingFile2{File: f, fs: fs, meta: meta}
 	if len(fis) == 1 {
 		return f, err
 	}
@@ -408,6 +413,39 @@ func (f *rootMappingFile) Readdir(count int) ([]os.FileInfo, error) {
 }
 
 func (f *rootMappingFile) Readdirnames(count int) ([]string, error) {
+	dirs, err := f.Readdir(count)
+	if err != nil {
+		return nil, err
+	}
+	dirss := make([]string, len(dirs))
+	for i, d := range dirs {
+		dirss[i] = d.Name()
+	}
+	return dirss, nil
+}
+
+type rootMappingFile2 struct {
+	afero.File
+	fs   *RootMappingFs
+	meta FileMeta
+}
+
+func (f *rootMappingFile2) Readdir(count int) ([]os.FileInfo, error) {
+
+	fis, err := f.File.Readdir(count)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, fi := range fis {
+		fis[i] = decorateFileInfo("rm2-f", fi, f.fs, nil, "", "", f.meta)
+	}
+
+	return fis, nil
+
+}
+
+func (f *rootMappingFile2) Readdirnames(count int) ([]string, error) {
 	dirs, err := f.Readdir(count)
 	if err != nil {
 		return nil, err

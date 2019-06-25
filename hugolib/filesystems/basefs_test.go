@@ -337,7 +337,7 @@ func countFileaAndGetFilenames(fs afero.Fs, dirname string) (int, []string, erro
 	counter := 0
 	var filenames []string
 
-	w := hugofs.NewWalkway(fs, dirname, func(info hugofs.FileMetaInfo, err error) error {
+	wf := func(path string, info hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -352,7 +352,9 @@ func countFileaAndGetFilenames(fs afero.Fs, dirname string) (int, []string, erro
 		}
 
 		return nil
-	})
+	}
+
+	w := hugofs.NewWalkway(hugofs.WalkwayConfig{Fs: fs, Root: dirname, WalkFn: wf})
 
 	if err := w.Walk(); err != nil {
 		return -1, nil, err

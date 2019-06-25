@@ -242,6 +242,15 @@ func (c *pagesCollector) addToBundle(info hugofs.FileMetaInfo, bundles pageBundl
 	}
 }
 
+func stringSliceContains(k string, values ...string) bool {
+	for _, v := range values {
+		if k == v {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *pagesCollector) cloneFileInfo(fi hugofs.FileMetaInfo) hugofs.FileMetaInfo {
 	cm := hugofs.FileMeta{}
 	meta := fi.Meta()

@@ -397,7 +397,7 @@ func (b *sourceFilesystemsBuilder) Build() (*SourceFilesystems, error) {
 	// TODO(bep) mod contentFilesystems probably needs to be reversed
 	contentDirs := b.theBigFs.contentDirs
 
-	contentFs, err := hugofs.NewLanguageFs(b.p.Languages.AsSet(), contentDirs...)
+	contentFs, err := hugofs.NewLanguageFs2(b.p.Languages.AsSet(), afero.NewBasePathFs(b.theBigFs.overlay, "content"))
 	if err != nil {
 		return nil, errors.Wrap(err, "create content filesystem")
 	}
@@ -841,7 +841,7 @@ func (b *sourceFilesystemsBuilder) createModFs(
 	if collector.overlay == nil {
 		collector.overlay = rmfs
 	} else {
-		collector.overlay = afero.NewCopyOnWriteFs(collector.overlay, rmfs)
+		collector.overlay = hugofs.NewLanguageCompositeFs(collector.overlay, rmfs)
 	}
 
 	return nil

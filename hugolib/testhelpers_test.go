@@ -815,9 +815,13 @@ func content(c resource.ContentProvider) string {
 func dumpPages(pages ...page.Page) {
 	fmt.Println("---------")
 	for i, p := range pages {
-		fmt.Printf("%d: Kind: %s Title: %-10s RelPermalink: %-10s Path: %-10s sections: %s\n",
+		var meta interface{}
+		if p.File() != nil {
+			meta = p.File().FileInfo().Meta()
+		}
+		fmt.Printf("%d: Kind: %s Title: %-10s RelPermalink: %-10s Path: %-10s sections: %s Lang: %s Meta: %v\n",
 			i+1,
-			p.Kind(), p.Title(), p.RelPermalink(), p.Path(), p.SectionsPath())
+			p.Kind(), p.Title(), p.RelPermalink(), p.Path(), p.SectionsPath(), p.Lang(), meta)
 	}
 }
 

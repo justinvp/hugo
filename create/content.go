@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gohugoio/hugo/hugofs/files"
+
 	"github.com/gohugoio/hugo/hugofs"
 
 	"github.com/gohugoio/hugo/helpers"
@@ -204,7 +206,7 @@ func mapArcheTypeDir(
 
 		fil := fi.(hugofs.FileMetaInfo)
 
-		if hugolib.IsContentFile(filename) {
+		if files.IsContentFile(filename) {
 			m.contentFiles = append(m.contentFiles, fil)
 			if !m.siteUsed {
 				m.siteUsed, err = usesSiteVar(fs, filename)

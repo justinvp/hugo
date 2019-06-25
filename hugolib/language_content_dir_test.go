@@ -211,7 +211,11 @@ Content.
 
 	_ = os.Stdout
 
-	b.Build(BuildCfg{})
+	err := b.BuildE(BuildCfg{})
+
+	//dumpPages(b.H.Sites[2].RegularPages()...)
+
+	assert.NoError(err)
 
 	assert.Equal(3, len(b.H.Sites))
 
@@ -282,9 +286,9 @@ Content.
 	assert.Equal("/en/sect/mybundle/", bundleEn.RelPermalink())
 	assert.Equal("/sv/sect/mybundle/", bundleSv.RelPermalink())
 
-	assert.Equal(4, len(bundleEn.Resources()))
 	assert.Equal(4, len(bundleNn.Resources()))
 	assert.Equal(4, len(bundleSv.Resources()))
+	assert.Equal(4, len(bundleEn.Resources()))
 
 	b.AssertFileContent("/my/project/public/en/sect/mybundle/index.html", "image/png: /en/sect/mybundle/logo.png")
 	b.AssertFileContent("/my/project/public/nn/sect/mybundle/index.html", "image/png: /nn/sect/mybundle/logo.png")

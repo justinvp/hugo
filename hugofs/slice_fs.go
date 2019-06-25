@@ -15,7 +15,6 @@ package hugofs
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -62,7 +61,7 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 			}
 
 			lang := source.Lang()
-			fileLang, translationBaseName, translationBaseNameWithExt := langInfoFrom(langs, fi.Name())
+			fileLang, translationBaseName, translationBaseNameWithExt := langInfoFromFil(langs, fi.Name())
 			weight := 0
 
 			if fileLang != "" {
@@ -108,7 +107,7 @@ func NewLanguageFs(langs map[string]bool, sources ...FileMetaInfo) (afero.Fs, er
 			fim := fi.(FileMetaInfo)
 			langs := translations[fim.Meta().TranslationBaseNameWithExt()]
 			if len(langs) > 0 {
-				fim.Meta()["translations"] = sortAndremoveStringDuplicates(langs)
+				fim.Meta()["translations"] = sortAndremoveStringDuplicates2(langs)
 			}
 		}
 	}
@@ -406,7 +405,7 @@ func (f *sliceDir) WriteString(s string) (ret int, err error) {
 // Try to extract the language from the given filename.
 // Any valid language identificator in the name will win over the
 // language set on the file system, e.g. "mypost.en.md".
-func langInfoFrom(languages map[string]bool, name string) (string, string, string) {
+func langInfoFromFil(languages map[string]bool, name string) (string, string, string) {
 	var lang string
 
 	baseName := filepath.Base(name)
@@ -435,17 +434,7 @@ func langInfoFrom(languages map[string]bool, name string) (string, string, strin
 
 }
 
-func printFs(fs afero.Fs, path string, w io.Writer) {
-	if fs == nil {
-		return
-	}
-	afero.Walk(fs, path, func(path string, info os.FileInfo, err error) error {
-		fmt.Println("p:::", path)
-		return nil
-	})
-}
-
-func sortAndremoveStringDuplicates(s []string) []string {
+func sortAndremoveStringDuplicates2(s []string) []string {
 	ss := sort.StringSlice(s)
 	ss.Sort()
 	i := 0

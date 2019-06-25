@@ -659,7 +659,7 @@ func (c *commandeer) getDirList() ([]string, error) {
 	// To handle nested symlinked content dirs
 	//	var nested []string TODO(bep) mod
 
-	walkFn := func(fi hugofs.FileMetaInfo, err error) error {
+	walkFn := func(path string, fi hugofs.FileMetaInfo, err error) error {
 		if err != nil {
 			c.logger.ERROR.Println("walker: ", err)
 			return nil
@@ -681,7 +681,7 @@ func (c *commandeer) getDirList() ([]string, error) {
 	watchDirs := c.hugo.PathSpec.BaseFs.WatchDirs()
 	for _, watchDir := range watchDirs {
 
-		w := hugofs.NewWalkwayFromFi(watchDir, walkFn)
+		w := hugofs.NewWalkway(hugofs.WalkwayConfig{Info: watchDir, WalkFn: walkFn})
 		if err := w.Walk(); err != nil {
 			c.logger.ERROR.Println("walker: ", err)
 		}
